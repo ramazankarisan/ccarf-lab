@@ -1,0 +1,17 @@
+[project]
+name = "ccarf-lab"
+version = "0.1.0"
+description = "Hands-on Claude API and Agent SDK lab exercises (CCARF exam prep)."
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=2.1.0",
+    "claude-agent-sdk>=0.2.172",
+    "mcp>=2.3.0",
+    "pydantic>=2.14.1",
+    "python-dotenv>=1.2.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
