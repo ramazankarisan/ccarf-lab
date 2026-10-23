@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from ex1_support_agent import backend
@@ -18,6 +20,13 @@ from ex1_support_agent.backend import (
     process_refund,
     reset,
 )
+
+
+def existing_order(order_id: str) -> dict[str, Any]:
+    """lookup_order for an order the test knows exists (rules out None)."""
+    order = lookup_order(order_id)
+    assert order is not None, f"order {order_id} should exist"
+    return order
 
 
 @pytest.fixture(autouse=True)
@@ -147,7 +156,7 @@ def test_get_customer_without_arguments_raises_invalid_input():
 
 @pytest.mark.parametrize("order_id", ["12345", "#12345"])
 def test_lookup_order_accepts_plain_and_hash_prefixed_ids(order_id):
-    order = lookup_order(order_id)
+    order = existing_order(order_id)
 
     assert order["order_id"] == "12345"
     assert order["customer_id"] == "C001"
@@ -164,10 +173,10 @@ def test_lookup_order_unknown_well_formed_id_returns_none():
 
 
 def test_lookup_order_returns_a_copy_not_live_state():
-    order = lookup_order("12345")
+    order = existing_order("12345")
     order["status"] = "tampered"
 
-    assert lookup_order("12345")["status"] == "delivered"
+    assert existing_order("12345")["status"] == "delivered"
 
 
 # --- process_refund -----------------------------------------------------------
@@ -178,7 +187,7 @@ def test_refund_happy_path_marks_order_refunded():
 
     assert refund["refund_id"] == "RF-0001"
     assert refund["status"] == "refunded"
-    assert lookup_order("12345")["status"] == "refunded"
+    assert existing_order("12345")["status"] == "refunded"
 
 
 def test_refund_of_650_is_allowed_by_the_backend():
@@ -287,7 +296,7 @@ def test_fail_next_raises_n_times_then_recovers():
         lookup_order("12345")
     with pytest.raises(BackendTimeout):
         lookup_order("12345")
-    assert lookup_order("12345")["order_id"] == "12345"
+    assert existing_order("12345")["order_id"] == "12345"
 
 
 @pytest.mark.parametrize(
@@ -312,7 +321,7 @@ def test_timeout_happens_before_any_state_change():
 
     with pytest.raises(BackendTimeout):
         process_refund("12345", "C001", 10)
-    assert lookup_order("12345")["status"] == "delivered"
+    assert existing_order("12345")["status"] == "delivered"
 
 
 def test_fail_next_rejects_negative_counts():
@@ -327,6 +336,6 @@ def test_reset_restores_seed_data_ids_and_pending_failures():
 
     reset()
 
-    assert lookup_order("12345")["status"] == "delivered"
+    assert existing_order("12345")["status"] == "delivered"
     assert process_refund("12345", "C001", 10)["refund_id"] == "RF-0001"
     assert create_escalation("C001", {"reason": "x"})["ticket_id"] == "ESC-0001"

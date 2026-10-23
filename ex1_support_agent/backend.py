@@ -7,6 +7,10 @@ edge case the agent must handle (errors, policy rules, timeouts) lives here.
 import copy
 import math
 import re
+from typing import Any
+
+# A JSON-like record: customers, orders, refunds and tickets.
+type Record = dict[str, Any]
 
 # --- Exceptions ---------------------------------------------------------------
 
@@ -48,7 +52,7 @@ def _days_before_seed(days: int) -> int:
     return SEED_TIME - days * DAY
 
 
-SEED_CUSTOMERS: dict[str, dict] = {
+SEED_CUSTOMERS: dict[str, Record] = {
     # Two customers share a name on purpose: a name search returns 2 results.
     "C001": {
         "name": "Maria Schmidt",
@@ -72,7 +76,7 @@ SEED_CUSTOMERS: dict[str, dict] = {
     },
 }
 
-SEED_ORDERS: dict[str, dict] = {
+SEED_ORDERS: dict[str, Record] = {
     # Happy path: delivered recently, total under $500.
     "12345": {
         "customer_id": "C001",
@@ -155,10 +159,10 @@ SEED_ORDERS: dict[str, dict] = {
 }
 
 # Live state the functions read and change. Filled from the seed by reset().
-_customers: dict[str, dict] = {}
-_orders: dict[str, dict] = {}
-_refunds: list[dict] = []
-_escalations: list[dict] = []
+_customers: dict[str, Record] = {}
+_orders: dict[str, Record] = {}
+_refunds: list[Record] = []
+_escalations: list[Record] = []
 _pending_failures = 0
 
 
@@ -249,7 +253,7 @@ def get_customer(
     customer_id: str | None = None,
     email: str | None = None,
     name: str | None = None,
-) -> list[dict]:
+) -> list[Record]:
     """Find customers matching every given field. No match returns []."""
     _simulate_outage()
     if customer_id is None and email is None and name is None:
@@ -267,7 +271,7 @@ def get_customer(
     return matches
 
 
-def lookup_order(order_id: str) -> dict | None:
+def lookup_order(order_id: str) -> Record | None:
     """Return the order, or None when a well-formed ID is unknown."""
     _simulate_outage()
     normalized_id = _normalize_order_id(order_id)
@@ -277,7 +281,7 @@ def lookup_order(order_id: str) -> dict | None:
     return {"order_id": normalized_id, **copy.deepcopy(order)}
 
 
-def process_refund(order_id: str, customer_id: str, amount: float) -> dict:
+def process_refund(order_id: str, customer_id: str, amount: float) -> Record:
     """Refund a delivered order. Checks run in a fixed order:
     input format -> ownership -> business policy.
     """
@@ -322,7 +326,7 @@ def process_refund(order_id: str, customer_id: str, amount: float) -> dict:
     return dict(refund)
 
 
-def create_escalation(customer_id: str | None, summary: dict) -> dict:
+def create_escalation(customer_id: str | None, summary: Record) -> Record:
     """Open a ticket for a human agent and return it with its ticket_id.
 
     customer_id may be None: a customer who asks for a human must be escalated
