@@ -20,7 +20,7 @@ def extract_text(message: Message) -> str:
     return "".join(block.text for block in message.content if block.type == "text")
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover - live API call, run by hand
     load_dotenv()
     client = Anthropic()  # reads ANTHROPIC_API_KEY from the environment
     model = os.environ["MODEL"]

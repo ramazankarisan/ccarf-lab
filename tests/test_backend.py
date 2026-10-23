@@ -142,6 +142,12 @@ def test_get_customer_combines_filters():
     assert [c["customer_id"] for c in results] == ["C002"]
 
 
+def test_get_customer_by_id():
+    results = get_customer(customer_id="C003")
+
+    assert [c["name"] for c in results] == ["John Doe"]
+
+
 def test_get_customer_no_match_returns_empty_list():
     assert get_customer(name="Nobody Here") == []
 
