@@ -21,7 +21,8 @@ from ex1_support_agent.agent import (
     format_sdk_run,
     gather,
 )
-from ex1_support_agent.loop import SYSTEM_PROMPT, ToolCall
+from ex1_support_agent.loop import ToolCall
+from ex1_support_agent.prompts import SYSTEM_PROMPT
 from ex1_support_agent.server import mcp
 
 # Offline only: these build options and parse SDK messages, never start an agent.

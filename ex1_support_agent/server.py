@@ -11,11 +11,11 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
 from mcp.server.mcpserver import MCPServer
 from mcp.types import CallToolResult, TextContent
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ex1_support_agent import backend
 
@@ -116,19 +116,47 @@ def support_tool[**P](
 
 
 class HandoffSummary(BaseModel):
-    """Everything a human agent needs to pick up the case without re-asking."""
+    """Everything a human agent needs to act without reading the transcript."""
+
+    # Reject unknown fields instead of dropping them silently. The schema then
+    # says additionalProperties: false, so the model also sees it up front.
+    model_config = ConfigDict(extra="forbid")
 
     customer_id: str | None = Field(
-        description="Verified customer ID, e.g. 'C001'. null if not identified yet."
+        description="Customer ID from get_customer, e.g. 'C001'. null if not identified yet."
     )
-    reason: str = Field(description="Why the case needs a human, in one sentence.")
+    verified: bool = Field(
+        description="true only if exactly one get_customer match came from the customer's "
+        "email or customer ID. A name-only match is not verified."
+    )
+    order_ids: list[Annotated[str, Field(pattern=r"^\d{5}$")]] = Field(
+        description="Every order involved, as 5-digit numbers without '#', e.g. ['45678']. "
+        "Empty list if none."
+    )
+    issue: str = Field(description="What the customer wants, in one sentence.")
     root_cause: str = Field(description="What actually went wrong, as far as is known.")
     amount: float | None = Field(
         default=None,
         allow_inf_nan=False,
         description="Money involved in USD, e.g. 650.0. null if no amount applies.",
     )
+    actions_taken: list[str] = Field(
+        description="What was already tried, in order, including blocked or failed attempts, "
+        "e.g. ['Verified by email', 'process_refund for 650.0 blocked: needs a human']. "
+        "Empty list if nothing was tried."
+    )
+    policy_applied: str | None = Field(
+        default=None,
+        description="The policy or system rule involved, e.g. '30-day refund window'. "
+        "null if none.",
+    )
     recommended_action: str = Field(description="What the human agent should do next.")
+
+    @model_validator(mode="after")
+    def verified_needs_a_customer_id(self) -> Self:
+        if self.verified and self.customer_id is None:
+            raise ValueError("verified is true but customer_id is null")
+        return self
 
 
 @support_tool
@@ -172,6 +200,8 @@ def lookup_order(
     name; use get_customer only when there is no order number. Looking up an
     order does not verify who you are talking to: before a refund, identify the
     customer with get_customer and check that the order's customer_id matches.
+    If the result has details_withheld, do exactly what its text says: it
+    differs for an unverified customer and for an order on another account.
     """
     order = backend.lookup_order(order_id)
     if order is None:
@@ -212,14 +242,17 @@ def escalate_to_human(summary: HandoffSummary) -> dict[str, Any]:
     """Hand the case over to a human support agent and return a ticket_id.
 
     Use it immediately when the customer asks for a human, even before you know
-    who they are (set customer_id to null), and do not try to solve the problem
-    first. Also use it for requests that the other tools or the written policy do
-    not cover, for example a competitor price match, or when a rule blocks a
-    refund and the customer still disputes it. Fill in the summary so the human
-    does not need to ask again: reason, root_cause, amount (null if none) and
-    recommended_action, for example "Call the customer about a price match for
-    order 12345". After escalating, tell the customer a human will follow up and
-    share the ticket_id.
+    who they are (set customer_id to null and verified to false), and do not try
+    to solve the problem first. Also use it for requests that the other tools or
+    the written policy do not cover, for example a competitor price match, when a
+    refund is blocked and the error says a human must decide, or when the
+    customer disputes a rule you have already explained. The human must be able
+    to act without reading the conversation, so pass ONE argument, summary, and
+    put every field inside it: issue, root_cause, order_ids, amount,
+    actions_taken (including blocked attempts), policy_applied and
+    recommended_action, for example "Approve or deny the 650.0 refund for order
+    45678 after checking the damage report". After
+    escalating, tell the customer a human will follow up and share the ticket_id.
     """
     ticket = backend.create_escalation(summary.customer_id, summary.model_dump())
     return {"ticket_id": ticket["ticket_id"]}

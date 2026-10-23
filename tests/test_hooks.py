@@ -11,18 +11,24 @@ from ex1_support_agent.hooks import (
     CLEAN_OUTPUT_MATCHER,
     INVALID_AMOUNT_REASON,
     LOOKUP_ORDER,
+    NOT_ON_ACCOUNT_REASON,
+    NOT_VERIFIED_REASON,
     OVER_LIMIT_REASON,
     REFUND_LIMIT,
     REFUND_MATCHER,
     check_refund,
     clean_tool_output,
     enforce_refund_limit,
+    make_output_cleaner,
     mcp_tool_name,
     normalize_timestamps,
-    replace_tool_output,
     to_iso,
     trim_order,
+    withhold_unowned_order,
 )
+
+# Most output tests run as if customer C001, the owner of order 12345, is verified.
+replace_tool_output = make_output_cleaner(lambda: "C001")
 
 
 def pre_tool_use(tool_name: str, tool_input: dict[str, Any]) -> PreToolUseHookInput:
@@ -314,9 +320,9 @@ def test_agent_registers_the_post_tool_use_hook():
     hooks = build_options(model="test-model").hooks
 
     assert hooks is not None
-    [matcher] = hooks["PostToolUse"]
-    assert matcher.matcher == CLEAN_OUTPUT_MATCHER
-    assert matcher.hooks == [replace_tool_output]
+    cleaning = hooks["PostToolUse"][0]
+    assert cleaning.matcher == CLEAN_OUTPUT_MATCHER
+    assert [hook.__name__ for hook in cleaning.hooks] == ["replace_tool_output"]
 
 
 @pytest.mark.anyio
@@ -352,3 +358,94 @@ async def test_post_callback_ignores_other_events():
     event: HookInput = pre_tool_use(LOOKUP_ORDER, {"order_id": "12345"})
 
     assert await replace_tool_output(event, "toolu_1", {"signal": None}) == {}
+
+
+# --- Authorization: withhold_unowned_order ------------------------------------
+# Identity is not authorization: a verified customer sees only their own orders.
+
+ORDER_12345: dict[str, Any] = {
+    "found": True,
+    "order_id": "12345",
+    "customer_id": "C001",
+    "status": "delivered",
+    "total": 129.99,
+}
+
+
+def withheld_12345(reason: str) -> dict[str, Any]:
+    return {"found": True, "order_id": "12345", "details_withheld": reason}
+
+
+def test_before_verification_the_model_is_told_to_verify_then_retry():
+    assert withhold_unowned_order(ORDER_12345, None) == withheld_12345(NOT_VERIFIED_REASON)
+    assert "get_customer" in NOT_VERIFIED_REASON
+    assert "call lookup_order again" in NOT_VERIFIED_REASON
+
+
+def test_the_verified_owner_gets_the_full_order():
+    assert withhold_unowned_order(ORDER_12345, "C001") == ORDER_12345
+
+
+def test_another_verified_customer_is_told_not_to_retry_or_escalate():
+    # C002 is the other Maria Schmidt: verified, but not for order 12345. A single
+    # "verify first" reason made the model retry and escalate a fake system bug.
+    assert withhold_unowned_order(ORDER_12345, "C002") == withheld_12345(NOT_ON_ACCOUNT_REASON)
+    assert "Do not retry and do not escalate" in NOT_ON_ACCOUNT_REASON
+    assert "couldn't find it on their account" in NOT_ON_ACCOUNT_REASON
+
+
+def test_the_two_reasons_are_different_instructions():
+    assert NOT_VERIFIED_REASON != NOT_ON_ACCOUNT_REASON
+    assert "lookup_order again" not in NOT_ON_ACCOUNT_REASON
+
+
+def test_a_not_found_answer_passes_through():
+    not_found = {"found": False, "order_id": "99999"}
+
+    assert withhold_unowned_order(not_found, None) == not_found
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("verified", "sees_details"),
+    [
+        pytest.param(None, False, id="nobody-verified"),
+        pytest.param("C001", True, id="owner-verified"),
+        pytest.param("C002", False, id="other-customer-verified"),
+    ],
+)
+async def test_the_model_sees_order_details_only_for_its_verified_owner(verified, sees_details):
+    cleaner = make_output_cleaner(lambda: verified)
+
+    output = await cleaner(
+        post_tool_use(LOOKUP_ORDER, lookup_order_output("12345")), "toolu_1", {"signal": None}
+    )
+
+    seen = json.loads(output["hookSpecificOutput"]["updatedToolOutput"])  # type: ignore[typeddict-item]
+    assert ("total" in seen) is sees_details
+    assert ("details_withheld" in seen) is not sees_details
+    assert seen["order_id"] == "12345"
+
+
+@pytest.mark.anyio
+async def test_the_cleaner_asks_for_the_verified_customer_on_every_call():
+    verified: list[str | None] = [None]
+    cleaner = make_output_cleaner(lambda: verified[0])
+    event = post_tool_use(LOOKUP_ORDER, lookup_order_output("12345"))
+
+    before = await cleaner(event, "toolu_1", {"signal": None})
+    verified[0] = "C001"  # the customer verifies; the model calls lookup_order again
+    after = await cleaner(event, "toolu_2", {"signal": None})
+
+    assert "details_withheld" in str(before)
+    assert "details_withheld" not in str(after)
+
+
+@pytest.mark.anyio
+async def test_refund_output_is_never_withheld():
+    cleaner = make_output_cleaner(lambda: None)
+    response = json.dumps({"refund_id": "RF-0001", "order_id": "12345", "amount": 10.0})
+
+    output = await cleaner(post_tool_use(REFUND_MATCHER, response), "toolu_1", {"signal": None})
+
+    assert "details_withheld" not in str(output)

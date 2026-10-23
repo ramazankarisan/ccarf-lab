@@ -6,7 +6,28 @@ from mcp import Client
 from mcp.types import TextContent
 
 from ex1_support_agent import backend
-from ex1_support_agent.server import NOT_ON_ACCOUNT_MESSAGE, error_result, mcp
+from ex1_support_agent.server import (
+    NOT_ON_ACCOUNT_MESSAGE,
+    HandoffSummary,
+    error_result,
+    mcp,
+)
+
+FULL_HANDOFF: dict[str, Any] = {
+    "customer_id": "C004",
+    "verified": True,
+    "order_ids": ["45678"],
+    "issue": "Wants a full refund for a monitor that arrived broken.",
+    "root_cause": "Item damaged in delivery; refund blocked by the system rule for large amounts.",
+    "amount": 650.0,
+    "actions_taken": [
+        "Verified the customer by email",
+        "Looked up order 45678: delivered 5 days ago, total 650.0",
+        "process_refund for 650.0 blocked: needs a human",
+    ],
+    "policy_applied": "Refunds above the automatic limit need a human",
+    "recommended_action": "Approve or deny the 650.0 refund after checking the damage report.",
+}
 
 # Client(server) connects in-process: no subprocess, no network.
 # (mcp 2.x replacement for v1's create_connected_server_and_client_session.)
@@ -101,14 +122,7 @@ async def test_process_refund_returns_the_confirmation():
 
 @pytest.mark.anyio
 async def test_escalate_to_human_returns_a_ticket_id():
-    summary = {
-        "customer_id": None,
-        "reason": "Customer asked for a human.",
-        "root_cause": "Not investigated; escalated on request.",
-        "recommended_action": "Call the customer back.",
-    }
-
-    data = await call("escalate_to_human", {"summary": summary})
+    data = await call("escalate_to_human", {"summary": FULL_HANDOFF})
 
     assert data == {"ticket_id": "ESC-0001"}
 
@@ -286,3 +300,112 @@ async def test_schema_errors_are_plain_text_from_the_sdk(arguments, bad_field):
     assert isinstance(block, TextContent)
     assert bad_field in block.text
     assert "errorCategory" not in block.text  # not our structured format
+
+
+# --- Handoff summary (Step 6) -------------------------------------------------
+# A human must be able to act on the ticket without reading the transcript.
+
+
+@pytest.mark.anyio
+async def test_escalation_stores_every_handoff_field(monkeypatch):
+    stored: dict[str, Any] = {}
+
+    def fake_create_escalation(customer_id: str | None, summary: dict[str, Any]) -> dict[str, Any]:
+        stored.update(customer_id=customer_id, summary=summary)
+        return {"ticket_id": "ESC-0042"}
+
+    monkeypatch.setattr(backend, "create_escalation", fake_create_escalation)
+
+    data = await call("escalate_to_human", {"summary": FULL_HANDOFF})
+
+    assert data == {"ticket_id": "ESC-0042"}
+    assert stored == {"customer_id": "C004", "summary": FULL_HANDOFF}
+
+
+def test_handoff_has_the_fields_a_human_needs():
+    assert list(HandoffSummary.model_fields) == [
+        "customer_id",
+        "verified",
+        "order_ids",
+        "issue",
+        "root_cause",
+        "amount",
+        "actions_taken",
+        "policy_applied",
+        "recommended_action",
+    ]
+
+
+def test_an_unidentified_customer_can_be_escalated_with_minimal_facts():
+    summary = HandoffSummary(
+        customer_id=None,
+        verified=False,
+        order_ids=[],
+        issue="Asked for a human.",
+        root_cause="Not investigated; escalated on request.",
+        actions_taken=[],
+        recommended_action="Call the customer back and verify them.",
+    )
+
+    assert summary.amount is None
+    assert summary.policy_applied is None
+
+
+@pytest.mark.parametrize(
+    ("change", "bad_field"),
+    [
+        pytest.param({"verified": True, "customer_id": None}, "customer_id", id="verified-no-id"),
+        pytest.param({"order_ids": ["#45678"]}, "order_ids", id="order-id-with-hash"),
+        pytest.param({"order_ids": ["4567"]}, "order_ids", id="order-id-4-digits"),
+        pytest.param({"amount": float("nan")}, "amount", id="amount-nan"),
+    ],
+)
+def test_handoff_rejects_inconsistent_or_inexact_facts(change, bad_field):
+    with pytest.raises(ValueError, match=bad_field):
+        HandoffSummary(**(FULL_HANDOFF | change))
+
+
+@pytest.mark.parametrize("missing", ["verified", "order_ids", "actions_taken", "issue"])
+def test_handoff_requires_the_key_fields(missing):
+    summary = {key: value for key, value in FULL_HANDOFF.items() if key != missing}
+
+    with pytest.raises(ValueError, match=missing):
+        HandoffSummary(**summary)
+
+
+@pytest.mark.anyio
+async def test_escalate_description_asks_for_every_field():
+    description = (await tool_descriptions())["escalate_to_human"]
+
+    for field in ("issue", "order_ids", "actions_taken", "policy_applied", "verified"):
+        assert field in description, field
+    # Without this the model also repeated every field at the top level, as strings.
+    assert "ONE argument, summary" in description
+
+
+def test_handoff_rejects_invented_fields():
+    # A live run sent "order_ids_note"; by default Pydantic would drop it silently.
+    with pytest.raises(ValueError, match="order_ids_note"):
+        HandoffSummary(**(FULL_HANDOFF | {"order_ids_note": "45678"}))
+
+
+@pytest.mark.anyio
+async def test_handoff_schema_tells_the_model_no_other_fields_are_allowed():
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+
+    schema = tools["escalate_to_human"].input_schema
+    assert schema["$defs"]["HandoffSummary"]["additionalProperties"] is False
+
+
+@pytest.mark.anyio
+async def test_invented_field_comes_back_as_an_error_the_model_can_fix():
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "escalate_to_human", {"summary": FULL_HANDOFF | {"order_ids_note": "45678"}}
+        )
+
+    assert result.is_error
+    block = result.content[0]
+    assert isinstance(block, TextContent)
+    assert "order_ids_note" in block.text

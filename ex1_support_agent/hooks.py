@@ -6,11 +6,11 @@ Pure functions plus the SDK hook callbacks; no agent run happens in here.
 import json
 import logging
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, TypeGuard
 
-from claude_agent_sdk import HookContext, HookInput, HookJSONOutput
+from claude_agent_sdk import HookCallback, HookContext, HookInput, HookJSONOutput
 
 logger = logging.getLogger(__name__)
 
@@ -157,22 +157,69 @@ def clean_tool_output(tool_name: str, tool_response: object) -> str | None:
     return json.dumps(cleaned)
 
 
-async def replace_tool_output(
-    input_data: HookInput, tool_use_id: str | None, context: HookContext
-) -> HookJSONOutput:
-    """PostToolUse callback: replace the output the model sees with the cleaned one.
+# --- Authorization: whose order is this? --------------------------------------
+# Verifying WHO the customer is does not authorize them for EVERY order. If the
+# model only saw the details when the prompt allowed it, one slip would leak
+# another customer's order. So the details never reach the model at all.
+
+# One reason per situation, each saying what to do next (the 2.2 lesson): a
+# single "verify first" made the model re-verify, retry and even escalate when
+# the order simply belonged to someone else.
+NOT_VERIFIED_REASON = "Verify the customer with get_customer, then call lookup_order again."
+NOT_ON_ACCOUNT_REASON = (
+    "This order is not on the verified customer's account. Do not retry and do not "
+    "escalate. Tell the customer you couldn't find it on their account and ask them "
+    "to check the number."
+)
+
+
+def withhold_unowned_order(
+    order: dict[str, Any], verified_customer_id: str | None
+) -> dict[str, Any]:
+    """Keep a found order's details only if it belongs to the verified customer.
+
+    Otherwise the model learns just that the order exists, which is what it may
+    tell an unverified customer anyway.
+    """
+    if not order.get("found"):
+        return order
+    if verified_customer_id is None:
+        reason = NOT_VERIFIED_REASON
+    elif order.get("customer_id") != verified_customer_id:
+        reason = NOT_ON_ACCOUNT_REASON
+    else:
+        return order
+    return {"found": True, "order_id": order.get("order_id"), "details_withheld": reason}
+
+
+def make_output_cleaner(verified_customer_id: Callable[[], str | None]) -> HookCallback:
+    """A PostToolUse callback that replaces the output the model sees.
+
+    verified_customer_id is asked on every call, so it always reflects the
+    session's latest verification. A function rather than a CaseFacts keeps
+    this module independent of case_facts.py.
 
     updatedToolOutput REPLACES the output. additionalContext would only add to
     it, so the model would still read the raw data next to the clean copy.
     """
-    if input_data["hook_event_name"] != "PostToolUse":
-        return {}
-    cleaned = clean_tool_output(input_data["tool_name"], input_data["tool_response"])
-    if cleaned is None:
-        return {}
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "updatedToolOutput": cleaned,
+
+    async def replace_tool_output(
+        input_data: HookInput, tool_use_id: str | None, context: HookContext
+    ) -> HookJSONOutput:
+        if input_data["hook_event_name"] != "PostToolUse":
+            return {}
+        tool_name = input_data["tool_name"]
+        cleaned = clean_tool_output(tool_name, input_data["tool_response"])
+        if cleaned is None:
+            return {}
+        if tool_name == LOOKUP_ORDER:
+            order = withhold_unowned_order(json.loads(cleaned), verified_customer_id())
+            cleaned = json.dumps(order)
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "updatedToolOutput": cleaned,
+            }
         }
-    }
+
+    return replace_tool_output
