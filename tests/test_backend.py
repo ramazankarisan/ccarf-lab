@@ -100,7 +100,8 @@ def test_one_recent_delivered_order_totals_650_for_the_hook_test():
 
 @pytest.mark.parametrize("order_id", list(SEED_ORDERS))
 def test_order_ids_are_five_digits_and_reference_known_customers(order_id):
-    assert len(order_id) == 5 and order_id.isdigit()
+    assert len(order_id) == 5
+    assert order_id.isdigit()
     assert SEED_ORDERS[order_id]["customer_id"] in SEED_CUSTOMERS
 
 
@@ -187,9 +188,7 @@ def test_refund_of_650_is_allowed_by_the_backend():
     assert refund["status"] == "refunded"
 
 
-@pytest.mark.parametrize(
-    "amount", [0, -10, "50", True, float("nan"), float("inf"), float("-inf")]
-)
+@pytest.mark.parametrize("amount", [0, -10, "50", True, float("nan"), float("inf"), float("-inf")])
 def test_refund_rejects_invalid_amount(amount):
     with pytest.raises(InvalidInput):
         process_refund("12345", "C001", amount)
@@ -317,7 +316,7 @@ def test_timeout_happens_before_any_state_change():
 
 
 def test_fail_next_rejects_negative_counts():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="n must be >= 0"):
         fail_next(-1)
 
 

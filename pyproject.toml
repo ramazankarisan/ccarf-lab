@@ -13,9 +13,36 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
+    "pre-commit>=4.7.0",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.2",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle errors and warnings
+    "F",       # pyflakes: unused imports, undefined names
+    "I",       # isort: import order
+    "N",       # pep8-naming
+    "UP",      # pyupgrade: modern syntax for the target version
+    "B",       # bugbear: likely bugs and design problems
+    "SIM",     # simplify
+    "S",       # bandit: security checks
+    "PT",      # pytest style
+    "RUF",     # ruff-specific rules
+]
+# The exercise prescribes names like BackendTimeout and PolicyViolation.
+ignore = ["N818"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # assert is how pytest works
