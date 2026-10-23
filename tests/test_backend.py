@@ -189,7 +189,7 @@ def test_refund_happy_path_marks_order_refunded():
 
 
 def test_refund_of_650_is_allowed_by_the_backend():
-    # The $500 limit is deliberately NOT here: Step 5's hook enforces it.
+    # The $500 limit is deliberately NOT here: the PreToolUse hook enforces it.
     refund = process_refund("45678", "C004", 650)
 
     assert refund["status"] == "refunded"

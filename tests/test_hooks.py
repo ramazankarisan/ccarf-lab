@@ -7,8 +7,10 @@ from claude_agent_sdk import HookInput, PostToolUseHookInput, PreToolUseHookInpu
 
 from ex1_support_agent import backend
 from ex1_support_agent.agent import build_options
+from ex1_support_agent.case_facts import CaseFacts
 from ex1_support_agent.hooks import (
     CLEAN_OUTPUT_MATCHER,
+    IDENTITY_LOCKED_REASON,
     INVALID_AMOUNT_REASON,
     LOOKUP_ORDER,
     NOT_ON_ACCOUNT_REASON,
@@ -16,9 +18,12 @@ from ex1_support_agent.hooks import (
     OVER_LIMIT_REASON,
     REFUND_LIMIT,
     REFUND_MATCHER,
+    already_escalated_reason,
     check_refund,
     clean_tool_output,
     enforce_refund_limit,
+    lock_identity,
+    make_escalation_guard,
     make_output_cleaner,
     mcp_tool_name,
     normalize_timestamps,
@@ -128,7 +133,8 @@ def test_agent_registers_the_hook_for_pre_tool_use():
     assert hooks is not None
     [matcher] = hooks["PreToolUse"]
     assert matcher.matcher == REFUND_MATCHER
-    assert matcher.hooks == [enforce_refund_limit]
+    assert matcher.hooks[0] == enforce_refund_limit
+    assert matcher.hooks[1].__name__ == "deny_refund_on_escalated_order"
 
 
 # --- enforce_refund_limit (callback) ------------------------------------------
@@ -185,7 +191,7 @@ def test_to_iso_is_utc_with_a_z_suffix():
 
 
 def test_order_12345_is_delivered_on_october_19_not_18():
-    # Step 4 regression: the model converted this timestamp itself and said October 18.
+    # Regression: converting this timestamp itself, the model said October 18.
     order = backend.lookup_order("12345")
     assert order is not None
 
@@ -309,10 +315,14 @@ def test_anything_but_a_successful_json_object_passes_through(response):
 # --- PostToolUse wiring and callback ------------------------------------------
 
 
-def test_post_tool_use_matcher_covers_exactly_lookup_order_and_process_refund():
+def test_post_tool_use_matcher_covers_get_customer_lookup_order_and_process_refund():
     tools = CLEAN_OUTPUT_MATCHER.split("|")
 
-    assert tools == ["mcp__support__lookup_order", "mcp__support__process_refund"]
+    assert tools == [
+        "mcp__support__get_customer",
+        "mcp__support__lookup_order",
+        "mcp__support__process_refund",
+    ]
     assert set(tools) <= set(build_options(model="test-model").allowed_tools)
 
 
@@ -449,3 +459,130 @@ async def test_refund_output_is_never_withheld():
     output = await cleaner(post_tool_use(REFUND_MATCHER, response), "toolu_1", {"signal": None})
 
     assert "details_withheld" not in str(output)
+
+
+# --- One customer per conversation: lock_identity -----------------------------
+
+C002_MATCH = {"customer_id": "C002", "name": "Maria Schmidt", "email": "m.schmidt@example.org"}
+C004_MATCH = {"customer_id": "C004", "name": "Aiko Tanaka", "email": "aiko.tanaka@example.com"}
+
+
+def test_before_verification_get_customer_results_pass_through():
+    result = {"matches": [C004_MATCH], "count": 1}
+
+    assert lock_identity(result, None) == result
+
+
+def test_the_verified_customer_can_look_themselves_up_again():
+    result = {"matches": [C002_MATCH], "count": 1}
+
+    assert lock_identity(result, "C002") == result
+
+
+@pytest.mark.parametrize(
+    "matches",
+    [
+        pytest.param([C004_MATCH], id="other-customer"),
+        pytest.param([C002_MATCH, C004_MATCH], id="mixed"),
+    ],
+)
+def test_another_customers_details_are_hidden_once_verified(matches):
+    locked = lock_identity({"matches": matches, "count": len(matches)}, "C002")
+
+    assert locked == {"identity_locked": IDENTITY_LOCKED_REASON}
+    assert "aiko" not in str(locked).lower()
+
+
+@pytest.mark.anyio
+async def test_the_cleaner_locks_get_customer_for_the_verified_session():
+    cleaner = make_output_cleaner(lambda: "C002")
+    response = json.dumps({"matches": [C004_MATCH], "count": 1})
+
+    output = await cleaner(
+        post_tool_use(mcp_tool_name("get_customer"), response), "toolu_1", {"signal": None}
+    )
+
+    seen = json.loads(output["hookSpecificOutput"]["updatedToolOutput"])  # type: ignore[typeddict-item]
+    assert seen == {"identity_locked": IDENTITY_LOCKED_REASON}
+
+
+# --- No refund on an order already handed to a human --------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("order_id", ["45678", "#45678"])
+async def test_refund_on_an_escalated_order_is_denied(order_id):
+    guard = make_escalation_guard(lambda: {"45678"})
+
+    output = await guard(
+        pre_tool_use(REFUND_MATCHER, {"order_id": order_id, "customer_id": "C004", "amount": 500}),
+        "toolu_1",
+        {"signal": None},
+    )
+
+    assert output == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": already_escalated_reason("45678"),
+        }
+    }
+    assert "Do not refund it here" in already_escalated_reason("45678")
+
+
+@pytest.mark.anyio
+async def test_refund_on_another_order_is_allowed():
+    guard = make_escalation_guard(lambda: {"45678"})
+
+    output = await guard(
+        pre_tool_use(REFUND_MATCHER, {"order_id": "12345", "amount": 10}),
+        "toolu_1",
+        {"signal": None},
+    )
+
+    assert output == {}
+
+
+@pytest.mark.anyio
+async def test_escalation_guard_ignores_other_tools():
+    guard = make_escalation_guard(lambda: {"45678"})
+
+    output = await guard(
+        pre_tool_use(LOOKUP_ORDER, {"order_id": "45678"}), "toolu_1", {"signal": None}
+    )
+
+    assert output == {}
+
+
+@pytest.mark.anyio
+async def test_escalating_then_refunding_the_same_order_is_blocked_through_the_wiring():
+    # The $501 → escalate → "just $500 then" case: the ticket stays open, so a
+    # refund here could pay out twice once a human approves the ticket.
+    facts = CaseFacts()
+    hooks = build_options(model="test-model", facts=facts).hooks
+    assert hooks is not None
+    recorder = hooks["PostToolUse"][1].hooks[0]
+    guard = hooks["PreToolUse"][0].hooks[1]
+    summary = {"order_ids": ["45678"]}
+
+    await recorder(
+        {
+            "hook_event_name": "PostToolUse",
+            "session_id": "session-test",
+            "transcript_path": "/dev/null",
+            "cwd": "/project",
+            "tool_name": mcp_tool_name("escalate_to_human"),
+            "tool_input": {"summary": summary},
+            "tool_response": json.dumps({"ticket_id": "ESC-0001"}),
+            "tool_use_id": "toolu_1",
+        },
+        "toolu_1",
+        {"signal": None},
+    )
+    output = await guard(
+        pre_tool_use(REFUND_MATCHER, {"order_id": "45678", "customer_id": "C004", "amount": 500}),
+        "toolu_2",
+        {"signal": None},
+    )
+
+    assert "deny" in str(output)

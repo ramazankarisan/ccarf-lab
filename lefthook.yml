@@ -1,0 +1,49 @@
+# Git hooks for both stacks. Installed by `npm --prefix web install`
+# (or run `npx --prefix web lefthook install`). Needs gitleaks on the PATH.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: secrets
+      run: gitleaks git --pre-commit --staged --redact --no-banner
+
+    - name: python lint + format
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files} && uv run ruff format {staged_files}
+      stage_fixed: true
+
+    - name: python types
+      glob: "*.py"
+      run: uv run mypy ex1_support_agent tests
+
+    - name: uv lock
+      glob: "{pyproject.toml,uv.lock}"
+      run: uv lock --check
+
+    - name: web lint + format
+      root: web/
+      glob: "*.{ts,tsx,css,json,html}"
+      run: npx oxlint --deny-warnings && npx prettier --write {staged_files}
+      stage_fixed: true
+
+    - name: web types
+      root: web/
+      glob: "*.{ts,tsx}"
+      run: npm run typecheck
+
+commit-msg:
+  jobs:
+    - name: conventional commit
+      run: |
+        head -1 {1} | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9-]+\))?!?: .+' \
+          || { echo "Use Conventional Commits, e.g. 'feat(web): add chat'"; exit 1; }
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: python tests
+      run: uv run pytest --cov -q
+
+    # No root/glob here: both suites run on every push, whatever changed.
+    - name: web tests
+      run: npm --prefix web test

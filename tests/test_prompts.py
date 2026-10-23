@@ -56,6 +56,7 @@ def test_role_is_short():
         "Do not promise what they will decide",
         "Never promise a refund before process_refund has succeeded",
         "Refund the amount the customer asks for",
+        "ask what is wrong with the order",
         "Never mention or describe it to the customer",
         "ask before calling process_refund",
         "never offer a follow-up refund on the same order",
@@ -117,7 +118,7 @@ def test_sdk_agent_uses_this_prompt():
 
 
 def test_examples_share_no_product_or_amount_with_the_seed_data():
-    # Few-shot leakage: a live run refunded $99.99 because an example used the
+    # Few-shot leakage: the model once refunded $99.99 because an example used the
     # seed's headphones at that price. Examples must generalize, not be copied.
     seed_values = set()
     for order in SEED_ORDERS.values():
@@ -131,3 +132,8 @@ def test_examples_share_no_product_or_amount_with_the_seed_data():
     examples = EXAMPLES.lower()
     leaked = sorted(value for value in seed_values if value in examples)
     assert leaked == []
+
+
+def test_role_limits_the_agent_to_support_topics():
+    assert "help only with orders, refunds and escalations" in ROLE
+    assert "politely decline anything else" in ROLE

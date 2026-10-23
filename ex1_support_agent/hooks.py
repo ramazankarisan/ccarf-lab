@@ -6,7 +6,7 @@ Pure functions plus the SDK hook callbacks; no agent run happens in here.
 import json
 import logging
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from datetime import UTC, datetime
 from typing import Any, TypeGuard
 
@@ -78,9 +78,44 @@ async def enforce_refund_limit(
     }
 
 
+def already_escalated_reason(order_id: str) -> str:
+    return (
+        f"Order {order_id} is already with a human agent from this conversation. Do not "
+        "refund it here: a second refund on top of the human's decision could pay out twice. "
+        "Tell the customer the human agent will handle the refund."
+    )
+
+
+def make_escalation_guard(escalated_order_ids: Callable[[], Collection[str]]) -> HookCallback:
+    """PreToolUse callback: deny process_refund on an order already handed to a human."""
+
+    async def deny_refund_on_escalated_order(
+        input_data: HookInput, tool_use_id: str | None, context: HookContext
+    ) -> HookJSONOutput:
+        if (
+            input_data["hook_event_name"] != "PreToolUse"
+            or input_data["tool_name"] != REFUND_MATCHER
+        ):
+            return {}
+        order_id = str(input_data["tool_input"].get("order_id", "")).lstrip("#")
+        if order_id not in escalated_order_ids():
+            return {}
+        reason = already_escalated_reason(order_id)
+        logger.warning("Denied %s for escalated order %s", REFUND_MATCHER, order_id)
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            }
+        }
+
+    return deny_refund_on_escalated_order
+
+
 # --- PostToolUse: normalize and trim ------------------------------------------
 # Deterministic transformations happen in code, before the model sees the data.
-# The model once read delivered_at=1792368000 as "October 18" (it is the 19th).
+# Left to convert it, the model read delivered_at=1792368000 as "October 18" (it is the 19th).
 
 # Key names decide what is a timestamp, never the size of a number.
 TIMESTAMP_KEYS = frozenset({"delivered_at", "refunded_at", "created_at", "at"})
@@ -91,8 +126,9 @@ ORDER_FIELDS = ("found", "order_id", "customer_id", "status", "total", "delivere
 ITEM_FIELDS = ("name", "qty", "unit_price")
 
 LOOKUP_ORDER = mcp_tool_name("lookup_order")
+GET_CUSTOMER = mcp_tool_name("get_customer")
 # "|" joins exact tool names in a matcher.
-CLEAN_OUTPUT_MATCHER = f"{LOOKUP_ORDER}|{REFUND_MATCHER}"
+CLEAN_OUTPUT_MATCHER = f"{GET_CUSTOMER}|{LOOKUP_ORDER}|{REFUND_MATCHER}"
 
 
 def to_iso(timestamp: int) -> str:
@@ -162,9 +198,9 @@ def clean_tool_output(tool_name: str, tool_response: object) -> str | None:
 # model only saw the details when the prompt allowed it, one slip would leak
 # another customer's order. So the details never reach the model at all.
 
-# One reason per situation, each saying what to do next (the 2.2 lesson): a
-# single "verify first" made the model re-verify, retry and even escalate when
-# the order simply belonged to someone else.
+# One reason per situation, each saying what to do next. A single "verify first"
+# made the model re-verify, retry and even escalate when the order simply
+# belonged to someone else.
 NOT_VERIFIED_REASON = "Verify the customer with get_customer, then call lookup_order again."
 NOT_ON_ACCOUNT_REASON = (
     "This order is not on the verified customer's account. Do not retry and do not "
@@ -192,6 +228,27 @@ def withhold_unowned_order(
     return {"found": True, "order_id": order.get("order_id"), "details_withheld": reason}
 
 
+IDENTITY_LOCKED_REASON = (
+    "This conversation is already verified as another customer. Do not switch accounts "
+    "and do not share these results. Tell the customer that one conversation covers one "
+    "account, and that they can start a new conversation for a different account."
+)
+
+
+def lock_identity(result: dict[str, Any], verified_customer_id: str | None) -> dict[str, Any]:
+    """Hide get_customer matches for anyone but the customer already verified.
+
+    Otherwise the model would see another customer's email and address, and
+    could treat a second typed email as a switch to that account.
+    """
+    if verified_customer_id is None:
+        return result
+    matches = result.get("matches") or []
+    if all(match.get("customer_id") == verified_customer_id for match in matches):
+        return result
+    return {"identity_locked": IDENTITY_LOCKED_REASON}
+
+
 def make_output_cleaner(verified_customer_id: Callable[[], str | None]) -> HookCallback:
     """A PostToolUse callback that replaces the output the model sees.
 
@@ -213,8 +270,11 @@ def make_output_cleaner(verified_customer_id: Callable[[], str | None]) -> HookC
         if cleaned is None:
             return {}
         if tool_name == LOOKUP_ORDER:
-            order = withhold_unowned_order(json.loads(cleaned), verified_customer_id())
-            cleaned = json.dumps(order)
+            cleaned = json.dumps(
+                withhold_unowned_order(json.loads(cleaned), verified_customer_id())
+            )
+        elif tool_name == GET_CUSTOMER:
+            cleaned = json.dumps(lock_identity(json.loads(cleaned), verified_customer_id()))
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",

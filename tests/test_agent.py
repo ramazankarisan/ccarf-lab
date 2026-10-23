@@ -84,6 +84,14 @@ def test_options_run_our_server_over_stdio_with_model_prompt_and_guard():
     assert options.cwd == PROJECT_ROOT
 
 
+def test_in_process_option_serves_the_same_server_in_this_process():
+    options = build_options(model="test-model", in_process=True)
+
+    assert options.mcp_servers == {
+        "support": {"type": "sdk", "name": "support", "instance": mcp._lowlevel_server}
+    }
+
+
 def test_options_ignore_the_developers_local_claude_config():
     options = build_options(model="test-model")
 

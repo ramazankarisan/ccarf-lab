@@ -180,6 +180,7 @@ def test_render_an_empty_case():
         "refunds:",
         "  (none)",
         "escalation_ticket: none",
+        "escalated_orders: none",
         "</case_facts>",
     ]
 
@@ -216,6 +217,7 @@ def test_render_keeps_exact_values_in_a_stable_order():
         "refunds:",
         "  - RF-0001: order=12345 amount=129.99",
         "escalation_ticket: ESC-0001",
+        "escalated_orders: none",
         "</case_facts>",
     ]
 
@@ -392,3 +394,30 @@ async def test_verification_recorded_by_one_hook_unlocks_details_in_the_other(em
     )
 
     assert ("details_withheld" not in str(output)) is sees_details
+
+
+# --- One customer per conversation, escalated orders -------------------------
+
+
+def test_the_first_verification_sticks_when_another_email_is_typed():
+    facts = CaseFacts()
+    other = {"customer_id": "C002", "name": "Maria Schmidt", "email": "m.schmidt@example.org"}
+
+    record(
+        facts, "get_customer", {"email": "m.schmidt@example.org"}, {"matches": [other], "count": 1}
+    )
+    record(
+        facts, "get_customer", {"email": "aiko.tanaka@example.com"}, {"matches": [C004], "count": 1}
+    )
+
+    assert facts.verified_customer_id == "C002"
+
+
+def test_escalation_records_its_order_ids_without_the_hash():
+    facts = CaseFacts()
+    summary = {"order_ids": ["#45678", "12345"]}
+
+    record(facts, "escalate_to_human", {"summary": summary}, {"ticket_id": "ESC-0001"})
+
+    assert facts.escalated_order_ids == {"45678", "12345"}
+    assert "escalated_orders: 12345, 45678" in render(facts)

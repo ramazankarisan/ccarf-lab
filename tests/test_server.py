@@ -173,7 +173,7 @@ async def test_descriptions_state_the_routing_rules(tool, required_phrases):
 
 @pytest.mark.anyio
 async def test_no_description_mentions_the_refund_limit():
-    # The $500 limit is enforced by the Step 5 hook, not by guidance text.
+    # The $500 limit is enforced by the PreToolUse hook, not by guidance text.
     for name, description in (await tool_descriptions()).items():
         assert "500" not in description, name
 
@@ -279,7 +279,7 @@ def test_error_result_has_the_same_four_fields_for_every_category(exc, category,
 # --- Schema validation: handled by the SDK, not by error_result ----------------
 # Arguments that don't match the input schema are rejected by the framework
 # before our wrapper runs. The agent then gets the SDK's plain-text error, not
-# our 4-field JSON. These tests document that, so the agent loop (Step 4) knows
+# our 4-field JSON. These tests document that, so the agent loop knows
 # it must handle both shapes.
 
 
@@ -302,7 +302,7 @@ async def test_schema_errors_are_plain_text_from_the_sdk(arguments, bad_field):
     assert "errorCategory" not in block.text  # not our structured format
 
 
-# --- Handoff summary (Step 6) -------------------------------------------------
+# --- Handoff summary ----------------------------------------------------------
 # A human must be able to act on the ticket without reading the transcript.
 
 
@@ -384,7 +384,7 @@ async def test_escalate_description_asks_for_every_field():
 
 
 def test_handoff_rejects_invented_fields():
-    # A live run sent "order_ids_note"; by default Pydantic would drop it silently.
+    # The model once sent "order_ids_note"; by default Pydantic would drop it silently.
     with pytest.raises(ValueError, match="order_ids_note"):
         HandoffSummary(**(FULL_HANDOFF | {"order_ids_note": "45678"}))
 

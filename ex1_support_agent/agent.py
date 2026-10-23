@@ -1,4 +1,4 @@
-"""The Step 4 agent on the Claude Agent SDK, using the MCP server over stdio.
+"""The support agent on the Claude Agent SDK, using the MCP server over stdio.
 
 The SDK runs the agentic loop that loop.py wrote by hand; hooks (hooks.py)
 make specific behavior deterministic.
@@ -22,6 +22,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKError,
     HookMatcher,
+    McpServerConfig,
     Message,
     ResultMessage,
     ToolResultBlock,
@@ -37,30 +38,51 @@ from ex1_support_agent.hooks import (
     REFUND_MATCHER,
     SERVER_NAME,
     enforce_refund_limit,
+    make_escalation_guard,
     make_output_cleaner,
     mcp_tool_name,
 )
 from ex1_support_agent.loop import ToolCall
 from ex1_support_agent.prompts import SYSTEM_PROMPT
+from ex1_support_agent.server import mcp
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TOOL_NAMES = ("get_customer", "lookup_order", "process_refund", "escalate_to_human")
-MAX_TURNS = 10  # same guard as the Step 4 loop's max_iterations
+MAX_TURNS = 10  # same guard as loop.py's max_iterations
 
 
 ALL_TOOLS_MATCHER = "|".join(mcp_tool_name(tool) for tool in TOOL_NAMES)
 
 
-def build_options(model: str, facts: CaseFacts | None = None) -> ClaudeAgentOptions:
+STDIO_SERVER: McpServerConfig = {
+    "type": "stdio",
+    "command": "uv",
+    "args": ["run", "python", "-m", "ex1_support_agent.server"],
+}
+
+
+def in_process_server() -> McpServerConfig:
+    """The same MCP server, served inside this process.
+
+    The web API uses it so both agents share one backend, and the data panel
+    sees every refund and ticket. A stdio server is a separate process with
+    its own copy of the data. mcp 2.x has no public accessor for the
+    low-level Server the SDK needs, hence the private attribute.
+    """
+    return {"type": "sdk", "name": SERVER_NAME, "instance": mcp._lowlevel_server}
+
+
+def build_options(
+    model: str, facts: CaseFacts | None = None, *, in_process: bool = False
+) -> ClaudeAgentOptions:
     """Agent options that expose our 4 MCP tools and nothing else.
 
     facts is this conversation's CaseFacts: a recorder hook writes into it, and
     the output cleaner reads its verified customer to decide which order
     details the model may see. Without one, a fresh CaseFacts is used.
+    in_process serves the MCP server in this process instead of over stdio.
     """
-    if facts is None:
-        facts = CaseFacts()
-    case = facts  # a name the lambda can close over, typed as CaseFacts
+    case: CaseFacts = facts if facts is not None else CaseFacts()
     post_tool_use = [
         HookMatcher(
             matcher=CLEAN_OUTPUT_MATCHER,
@@ -73,13 +95,7 @@ def build_options(model: str, facts: CaseFacts | None = None) -> ClaudeAgentOpti
         system_prompt=SYSTEM_PROMPT,  # a plain string replaces Claude Code's own prompt
         max_turns=MAX_TURNS,
         cwd=PROJECT_ROOT,  # so `uv run` finds this project when it starts the server
-        mcp_servers={
-            SERVER_NAME: {
-                "type": "stdio",
-                "command": "uv",
-                "args": ["run", "python", "-m", "ex1_support_agent.server"],
-            }
-        },
+        mcp_servers={SERVER_NAME: in_process_server() if in_process else STDIO_SERVER},
         tools=[],  # no built-in tools at all: no Bash, Read, Write, WebFetch ...
         allowed_tools=[mcp_tool_name(tool) for tool in TOOL_NAMES],  # exact names, no wildcard
         # Isolation: ignore the developer's own ~/.claude settings, hooks,
@@ -87,7 +103,15 @@ def build_options(model: str, facts: CaseFacts | None = None) -> ClaudeAgentOpti
         setting_sources=[],
         strict_mcp_config=True,
         hooks={
-            "PreToolUse": [HookMatcher(matcher=REFUND_MATCHER, hooks=[enforce_refund_limit])],
+            "PreToolUse": [
+                HookMatcher(
+                    matcher=REFUND_MATCHER,
+                    hooks=[
+                        enforce_refund_limit,
+                        make_escalation_guard(lambda: case.escalated_order_ids),
+                    ],
+                )
+            ],
             "PostToolUse": post_tool_use,
         },
     )

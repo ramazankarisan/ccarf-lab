@@ -473,3 +473,18 @@ def test_leaf_errors_unwraps_nested_exception_groups():
 
     assert leaf_errors(nested) == [timeout, refusal]
     assert leaf_errors(timeout) == [timeout]
+
+
+@pytest.mark.anyio
+async def test_history_from_an_earlier_turn_is_sent_again():
+    first = await run(FakeModel(reply(text("Which email?"), stop_reason="end_turn")))
+    model = FakeModel(reply(text("Thanks."), stop_reason="end_turn"))
+
+    second = await run(model, "maria.schmidt@example.com", history=first.messages)
+
+    assert [m["role"] for m in model.messages.requests[0]["messages"]] == [
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert second.messages[-2] == {"role": "user", "content": "maria.schmidt@example.com"}

@@ -39,7 +39,7 @@ from ex1_support_agent.server import mcp
 
 logger = logging.getLogger(__name__)
 
-# Minimal on purpose; Step 6 writes the real system prompt.
+# Minimal on purpose: this loop shows the mechanics. prompts.py has the full prompt.
 SYSTEM_PROMPT = "You are a customer support agent. Use the tools."
 MAX_TOKENS = 16_000
 
@@ -52,7 +52,7 @@ class UnexpectedStopReasonError(RuntimeError):
 
 # --- Model client -------------------------------------------------------------
 # The loop only needs `model_client.messages.create(...)`. Typing it as a
-# Protocol (structural typing, like a TS interface) lets the real AsyncAnthropic
+# Protocol (structural typing) lets the real AsyncAnthropic
 # and a scripted test fake both fit, without either one inheriting anything.
 
 
@@ -73,7 +73,7 @@ async def list_anthropic_tools(tools_client: Client) -> list[ToolParam]:
     """The MCP server's tools in Anthropic format.
 
     Taken from the server rather than the backend, so the model sees exactly the
-    descriptions and schemas tested in Step 3.
+    descriptions and schemas tested in test_server.py.
     """
     result = await tools_client.list_tools()
     return [
@@ -199,14 +199,17 @@ async def run_agent(
     tools_client: Client,
     model: str,
     max_iterations: int = 10,
+    history: Sequence[MessageParam] = (),
 ) -> AgentRun:
     """Run the agent until stop_reason says it is done, or the iteration cap is hit.
 
+    history is the messages of earlier turns (a previous AgentRun.messages), so
+    the API, which is stateless, sees the whole conversation again.
     No retries here: on a tool error the model reads isRetryable and decides.
     """
     tools = await list_anthropic_tools(tools_client)
     tool_names = {tool["name"] for tool in tools}
-    messages: list[MessageParam] = [{"role": "user", "content": user_message}]
+    messages: list[MessageParam] = [*history, {"role": "user", "content": user_message}]
     tool_calls: list[ToolCall] = []
     usage = TokenUsage()
     last_content: Sequence[ContentBlock] = []

@@ -1,14 +1,19 @@
 [project]
 name = "ccarf-lab"
 version = "0.1.0"
-description = "Hands-on Claude API and Agent SDK lab exercises (CCARF exam prep)."
+description = "A customer-support agent on the Claude API and Agent SDK, with MCP tools and hooks."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=2.1.0",
     "claude-agent-sdk>=0.2.172",
+    "fastapi>=0.161.1",
     "mcp>=2.3.0",
     "pydantic>=2.14.1",
     "python-dotenv>=1.2.4",
+    "uvicorn>=0.54.0",
 ]
 
 [build-system]
@@ -20,9 +25,9 @@ packages = ["ex1_support_agent"]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mcp[cli]>=2.3.0",
     "mypy>=2.4.0",
-    "pre-commit>=4.7.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.17.2",

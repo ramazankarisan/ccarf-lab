@@ -125,7 +125,7 @@ SEED_ORDERS: dict[str, Record] = {
             {"sku": "BK-042", "event": "picked", "at": _days_before_seed(48)},
         ],
     },
-    # Delivered recently, $650: the backend allows it; Step 5's hook must block it.
+    # Delivered recently, $650: the backend allows it; the refund-limit hook blocks it.
     "45678": {
         "customer_id": "C004",
         "total": 650.00,
@@ -164,6 +164,18 @@ _orders: dict[str, Record] = {}
 _refunds: list[Record] = []
 _escalations: list[Record] = []
 _pending_failures = 0
+
+
+def snapshot() -> Record:
+    """A copy of the live data, for the web app's data panel."""
+    return copy.deepcopy(
+        {
+            "customers": _customers,
+            "orders": _orders,
+            "refunds": _refunds,
+            "escalations": _escalations,
+        }
+    )
 
 
 # --- Test controls --------------------------------------------------------------

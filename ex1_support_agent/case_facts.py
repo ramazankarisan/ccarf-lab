@@ -37,6 +37,7 @@ class CaseFacts(BaseModel):
     orders: dict[str, OrderFacts] = Field(default_factory=dict)
     refunds: list[RefundFacts] = Field(default_factory=list)
     escalation_ticket: str | None = None
+    escalated_order_ids: set[str] = Field(default_factory=set)  # handed to a human
 
 
 # --- Recording ----------------------------------------------------------------
@@ -49,7 +50,9 @@ def record(facts: CaseFacts, tool: str, tool_input: dict[str, Any], result: dict
             # Verified only by a unique match on something the customer must know.
             # A name is not proof: anyone can type a name.
             identified_by_secret = bool(tool_input.get("email") or tool_input.get("customer_id"))
-            if identified_by_secret and result.get("count") == 1:
+            # One customer per conversation: the first verification sticks.
+            # Typing someone else's email later must not switch accounts.
+            if identified_by_secret and result.get("count") == 1 and not facts.verified_customer_id:
                 facts.verified_customer_id = result["matches"][0]["customer_id"]
         case "lookup_order":
             # Code records the full truth, including orders the customer is not
@@ -74,6 +77,10 @@ def record(facts: CaseFacts, tool: str, tool_input: dict[str, Any], result: dict
                 order.status = result["status"]
         case "escalate_to_human":
             facts.escalation_ticket = result["ticket_id"]
+            summary = tool_input.get("summary") or {}
+            facts.escalated_order_ids.update(
+                str(o).lstrip("#") for o in summary.get("order_ids", [])
+            )
 
 
 def make_fact_recorder(facts: CaseFacts) -> HookCallback:
@@ -152,5 +159,10 @@ def render(facts: CaseFacts) -> str:
             )
     if not facts.refunds:
         lines.append("  (none)")
-    lines += [f"escalation_ticket: {facts.escalation_ticket or 'none'}", "</case_facts>"]
+    escalated = ", ".join(sorted(facts.escalated_order_ids)) or "none"
+    lines += [
+        f"escalation_ticket: {facts.escalation_ticket or 'none'}",
+        f"escalated_orders: {escalated}",
+        "</case_facts>",
+    ]
     return "\n".join(lines)
