@@ -29,14 +29,6 @@ def existing_order(order_id: str) -> dict[str, Any]:
     return order
 
 
-@pytest.fixture(autouse=True)
-def clean_backend():
-    """Every test starts from the seed data and leaves nothing behind."""
-    backend.reset()
-    yield
-    backend.reset()
-
-
 # --- Exceptions ---------------------------------------------------------------
 
 
