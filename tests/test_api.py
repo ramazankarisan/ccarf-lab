@@ -9,6 +9,7 @@ from ex1_support_agent import backend
 from ex1_support_agent.api import create_app
 from ex1_support_agent.case_facts import CaseFacts
 from ex1_support_agent.loop import UnexpectedStopReasonError
+from ex1_support_agent.prompts import SYSTEM_PROMPT
 from ex1_support_agent.session import SupportSession
 from tests.test_loop import FakeModel, reply, text, tool_use
 from tests.test_session import FakeClient, result
@@ -188,3 +189,11 @@ def test_an_unknown_conversation_is_a_404(api, mode):
 )
 def test_invalid_requests_are_rejected(api, body):
     assert api.post("/api/chat", json=body).status_code == 422
+
+
+def test_client_mode_uses_the_same_full_prompt_as_agent_mode():
+    model = FakeModel(reply(text("Hi"), stop_reason="end_turn"))
+    with make_client(model=model) as client:
+        client.post("/api/chat", json={"mode": "client", "message": "1+1"})
+
+    assert model.messages.requests[0]["system"] == SYSTEM_PROMPT

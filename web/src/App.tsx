@@ -7,7 +7,7 @@ const MODES: { id: Mode; label: string; note: string }[] = [
   {
     id: 'client',
     label: 'Client SDK',
-    note: 'loop.py: the loop written by hand, minimal prompt, no hooks. Watch for: a $650 refund going through, internal fields and raw timestamps shown, and switching accounts mid-chat.',
+    note: 'loop.py: the loop written by hand. Same prompt, but no hooks, so the rules are only requests. Watch for: a $650 refund going through, internal fields and raw timestamps, switching accounts mid-chat.',
   },
   {
     id: 'agent',

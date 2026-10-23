@@ -200,11 +200,13 @@ async def run_agent(
     model: str,
     max_iterations: int = 10,
     history: Sequence[MessageParam] = (),
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> AgentRun:
     """Run the agent until stop_reason says it is done, or the iteration cap is hit.
 
     history is the messages of earlier turns (a previous AgentRun.messages), so
     the API, which is stateless, sees the whole conversation again.
+    system_prompt defaults to the minimal one; the web app passes the full one.
     No retries here: on a tool error the model reads isRetryable and decides.
     """
     tools = await list_anthropic_tools(tools_client)
@@ -221,7 +223,7 @@ async def run_agent(
         response = await model_client.messages.create(
             model=model,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
+            system=system_prompt,
             tools=tools,
             messages=messages,
         )

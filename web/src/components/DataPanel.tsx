@@ -7,6 +7,9 @@ interface DataPanelProps {
   onReset: () => void
 }
 
+const day = (timestamp: number | null) =>
+  timestamp === null ? null : new Date(timestamp * 1000).toISOString().slice(0, 10)
+
 interface RowProps {
   title: ReactNode
   extra?: ReactNode
@@ -67,7 +70,6 @@ export function DataPanel({ data, onAsk, onReset }: DataPanelProps) {
           Reset
         </button>
       </header>
-      <p className="hint">Raw backend records, including internal fields the hooks hide.</p>
 
       <h3>Customers</h3>
       {Object.entries(data.customers).map(([id, customer]) => (
@@ -96,7 +98,14 @@ export function DataPanel({ data, onAsk, onReset }: DataPanelProps) {
             </>
           }
           extra={<span className={`status ${order.status}`}>{order.status}</span>}
-          record={{ order_id: id, ...order }}
+          record={{
+            order_id: id,
+            customer_id: order.customer_id,
+            status: order.status,
+            total: order.total,
+            delivered: day(order.delivered_at),
+            items: order.items.map(({ name, qty, unit_price }) => ({ name, qty, unit_price })),
+          }}
           action={{
             label: 'Ask about this order',
             onClick: () => onAsk(`What's the status of order #${id}?`),

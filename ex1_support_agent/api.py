@@ -2,9 +2,10 @@
 
     uv run uvicorn ex1_support_agent.api:create_app_from_env --factory --port 8000
 
-"client" runs loop.py, the by-hand loop on the Client SDK: no hooks, minimal prompt.
-"agent" runs session.py on the Agent SDK: hooks, the full prompt and case facts.
-Both use the same MCP tools and the same backend data.
+"client" runs loop.py, the by-hand loop on the Client SDK.
+"agent" runs session.py on the Agent SDK, with hooks and case facts.
+Both get the same system prompt, MCP tools and backend data, so the only
+difference is what the code guarantees on top of the prompt.
 """
 
 import logging
@@ -24,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from ex1_support_agent import backend
 from ex1_support_agent.loop import ModelClient, ToolCall, UnexpectedStopReasonError, run_agent
+from ex1_support_agent.prompts import SYSTEM_PROMPT
 from ex1_support_agent.server import mcp
 from ex1_support_agent.session import SupportSession, open_session
 
@@ -89,6 +91,7 @@ class ChatService:
             tools_client=self.tools_client,
             model=self.model,
             history=self.histories.get(conversation_id, []),
+            system_prompt=SYSTEM_PROMPT,
         )
         self.histories[conversation_id] = agent_run.messages
         usage = agent_run.usage

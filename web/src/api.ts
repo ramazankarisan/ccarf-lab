@@ -25,7 +25,7 @@ export interface Order {
   total: number
   status: string
   delivered_at: number | null
-  items: { name: string; qty: number; unit_price: number }[]
+  items: { sku?: string; name: string; qty: number; unit_price: number }[]
   [field: string]: unknown
 }
 

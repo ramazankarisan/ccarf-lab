@@ -57,7 +57,8 @@ flowchart LR
     CF -. next turn .-> S
 ```
 
-Both modes use the same MCP server and the same backend data, so the data panel shows
+Both modes get the same system prompt, MCP server and backend data, so the only difference
+is what the code guarantees on top of the prompt. The data panel shows
 every refund and ticket. The CLIs serve the MCP server over stdio instead, as a
 separate process.
 

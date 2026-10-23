@@ -16,7 +16,8 @@ const DATA: ShopData = {
       total: 129.99,
       status: 'delivered',
       delivered_at: 1792368000,
-      items: [{ name: 'Wireless Headphones', qty: 1, unit_price: 99.99 }],
+      items: [{ sku: 'HP-100', name: 'Wireless Headphones', qty: 1, unit_price: 99.99 }],
+      warehouse_code: 'BER-03',
     },
   },
   refunds: [],
@@ -107,14 +108,15 @@ test('switching the mode starts a new conversation', async () => {
   expect(chatRequests[1]).toEqual({ mode: 'client', message: 'hello', conversation_id: null })
 })
 
-test('a row opens to show the raw record as JSON and fills the message', async () => {
+test('a row opens to show a compact record as JSON and fills the message', async () => {
   render(<App />)
   const user = userEvent.setup()
 
   await user.click(await screen.findByText('#12345'))
   await user.click(screen.getByRole('button', { name: 'Ask about this order' }))
 
-  expect(screen.getByText(/"delivered_at": 1792368000/)).toBeInTheDocument()
+  expect(screen.getByText(/"delivered": "2026-10-19"/)).toBeInTheDocument()
+  expect(screen.queryByText(/sku|warehouse_code/)).not.toBeInTheDocument()
   expect(screen.getByLabelText('Message')).toHaveValue("What's the status of order #12345?")
 })
 
@@ -128,7 +130,7 @@ test('selecting text in a row header does not toggle the row', async () => {
 
   await user.click(title)
 
-  expect(screen.queryByText(/"delivered_at"/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/"delivered"/)).not.toBeInTheDocument()
 })
 
 test('the chevron toggles a row even while text is selected', async () => {
@@ -140,7 +142,7 @@ test('the chevron toggles a row even while text is selected', async () => {
 
   await user.click(orderChevron)
 
-  expect(screen.getByText(/"delivered_at"/)).toBeInTheDocument()
+  expect(screen.getByText(/"delivered"/)).toBeInTheDocument()
   expect(orderChevron).toHaveAttribute('aria-expanded', 'true')
 })
 
