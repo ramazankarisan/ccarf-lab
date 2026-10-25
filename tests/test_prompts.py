@@ -60,6 +60,8 @@ def test_role_is_short():
         "Never mention or describe it to the customer",
         "ask before calling process_refund",
         "never offer a follow-up refund on the same order",
+        "Let process_refund decide whether a refund is allowed",
+        "never work out the refund window from dates yourself",
     ],
 )
 def test_verification_and_disclosure_rules(phrase):
@@ -76,6 +78,7 @@ def test_verification_and_disclosure_rules(phrase):
         "disputes a business rule",
         "transient",
         "internal error",
+        "call escalate_to_human once",
     ],
 )
 def test_escalation_criteria(phrase):

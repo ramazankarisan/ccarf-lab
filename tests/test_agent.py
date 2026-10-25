@@ -20,6 +20,8 @@ from ex1_support_agent.agent import (
     collect,
     format_sdk_run,
     gather,
+    result_text,
+    stdio_server,
 )
 from ex1_support_agent.loop import ToolCall
 from ex1_support_agent.prompts import SYSTEM_PROMPT
@@ -92,6 +94,19 @@ def test_in_process_option_serves_the_same_server_in_this_process():
     }
 
 
+def test_server_env_is_passed_to_the_stdio_server_process():
+    options = build_options(model="test-model", server_env={"SUPPORT_FAIL_NEXT": "1"})
+
+    assert options.mcp_servers == {"support": stdio_server({"SUPPORT_FAIL_NEXT": "1"})}
+    assert stdio_server({"SUPPORT_FAIL_NEXT": "1"})["env"] == {"SUPPORT_FAIL_NEXT": "1"}
+
+
+def test_server_env_cannot_reach_an_in_process_server():
+    # In process, the backend is this process's own: call backend.fail_next() instead.
+    with pytest.raises(ValueError, match="stdio"):
+        build_options(model="test-model", in_process=True, server_env={"SUPPORT_FAIL_NEXT": "1"})
+
+
 def test_options_ignore_the_developers_local_claude_config():
     options = build_options(model="test-model")
 
@@ -128,8 +143,28 @@ def test_collect_pairs_tool_calls_with_their_results():
         ToolCall("mcp__support__lookup_order", {"order_id": "1"}, is_error=False),
         ToolCall("mcp__support__get_customer", {"name": "X"}, is_error=True),
     ]
+    assert sdk_run.outputs == ["{}", "boom"]
     assert sdk_run.result is not None
     assert sdk_run.result.result == "Your order was delivered."
+
+
+@pytest.mark.parametrize(
+    ("content", "text"),
+    [
+        (None, ""),
+        ("plain", "plain"),
+        (
+            [
+                {"type": "text", "text": "a"},
+                {"type": "image", "data": "x"},
+                {"type": "text", "text": "b"},
+            ],
+            "a\nb",
+        ),
+    ],
+)
+def test_result_text_reads_every_content_shape(content, text):
+    assert result_text(content) == text
 
 
 def test_collect_ignores_a_result_without_a_matching_tool_use():

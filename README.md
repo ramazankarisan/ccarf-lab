@@ -72,6 +72,7 @@ separate process.
 | 4 | The agentic loop by hand on the Client SDK, with a CLI | `loop.py` |
 | 5 | The Agent SDK, a refund-limit hook, an output-cleaning hook | `agent.py`, `hooks.py` |
 | 6 | Escalation criteria, a full handoff, authorization, case facts, multi-turn chat | `prompts.py`, `case_facts.py`, `session.py` |
+| 7 | Live scenario tests: 12 scenarios, each run 3 times, asserting on tool calls and case facts | `tests/live/` |
 | + | A web app: FastAPI for both agents, React with a mode switch and a data panel | `api.py`, `web/` |
 
 ## Design decisions
@@ -85,7 +86,9 @@ separate process.
 | Order details are withheld unless the verified customer owns the order | Identity is not authorization. The rule covers tool output and the injected case facts. |
 | Each tool result says what to do next | With one vague reason, the model retried and escalated for nothing. |
 | Prompt examples share nothing with the seed data | Examples too close to real cases get copied: the model once refunded the example's amount. |
+| The backend decides refund eligibility, not the model | Left to judge the 30-day window from dates, the model skipped the refund call and counted the days from the wrong "today". |
 | Tests run offline | A scripted fake model and an in-process MCP client cover every branch with no API calls. |
+| Live scenarios assert on actions, 3 runs out of 3 | The agent is not deterministic. Tests check tool calls, arguments and case facts, never wording, and one green run proves little. |
 
 ## Quickstart
 
@@ -150,9 +153,10 @@ up, and every email address uses the reserved `example.com` / `example.org` doma
 ## Quality checks
 
 ```bash
-uv run pytest --cov                 # 314 tests, offline, 100% line and branch coverage
+uv run pytest --cov                 # 325 tests, offline, 100% line and branch coverage
 uv run mypy ex1_support_agent tests # strict type checking
 npm --prefix web test               # React tests (Vitest + Testing Library)
+uv run pytest -m live               # 12 live scenarios x 3 runs against the real API (a few cents)
 npx --prefix web lefthook run pre-commit --all-files
 ```
 
@@ -179,6 +183,7 @@ ex1_support_agent/
   api.py          FastAPI: both agents behind /api/chat, plus /api/data and /api/reset
   hello.py        API smoke test
 tests/            one test module per source module
+tests/live/       live scenario tests (marker: live, skipped by default)
 web/              React + TypeScript (Vite): chat, mode switch, data panel
 lefthook.yml      git hooks for both stacks
 CLAUDE.md         working rules for AI coding agents in this repo

@@ -9,7 +9,8 @@ import functools
 import inspect
 import json
 import logging
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Annotated, Any, Self
 
@@ -258,5 +259,18 @@ def escalate_to_human(summary: HandoffSummary) -> dict[str, Any]:
     return {"ticket_id": ticket["ticket_id"]}
 
 
+# --- Live test control ----------------------------------------------------------
+# Over stdio the backend lives in this server's own process, so a test cannot
+# call backend.fail_next() on it. It sets this variable in the server's env instead.
+
+FAIL_NEXT_ENV = "SUPPORT_FAIL_NEXT"
+
+
+def fail_next_from_env(environ: Mapping[str, str]) -> None:
+    """Make the first N backend calls time out, N from SUPPORT_FAIL_NEXT (default 0)."""
+    backend.fail_next(int(environ.get(FAIL_NEXT_ENV, "0")))
+
+
 if __name__ == "__main__":
+    fail_next_from_env(os.environ)
     mcp.run()  # stdio transport by default

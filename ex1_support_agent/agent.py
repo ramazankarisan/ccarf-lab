@@ -15,6 +15,7 @@ import sys
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import anyio
 from claude_agent_sdk import (
@@ -30,6 +31,7 @@ from claude_agent_sdk import (
     UserMessage,
     query,
 )
+from claude_agent_sdk.types import McpStdioServerConfig  # not re-exported at the top level
 from dotenv import load_dotenv
 
 from ex1_support_agent.case_facts import CaseFacts, make_fact_recorder
@@ -54,11 +56,16 @@ MAX_TURNS = 10  # same guard as loop.py's max_iterations
 ALL_TOOLS_MATCHER = "|".join(mcp_tool_name(tool) for tool in TOOL_NAMES)
 
 
-STDIO_SERVER: McpServerConfig = {
-    "type": "stdio",
-    "command": "uv",
-    "args": ["run", "python", "-m", "ex1_support_agent.server"],
-}
+def stdio_server(env: dict[str, str] | None = None) -> McpStdioServerConfig:
+    """The MCP server as a subprocess over stdio. env adds variables for that process."""
+    config: McpStdioServerConfig = {
+        "type": "stdio",
+        "command": "uv",
+        "args": ["run", "python", "-m", "ex1_support_agent.server"],
+    }
+    if env:
+        config["env"] = env
+    return config
 
 
 def in_process_server() -> McpServerConfig:
@@ -73,7 +80,11 @@ def in_process_server() -> McpServerConfig:
 
 
 def build_options(
-    model: str, facts: CaseFacts | None = None, *, in_process: bool = False
+    model: str,
+    facts: CaseFacts | None = None,
+    *,
+    in_process: bool = False,
+    server_env: dict[str, str] | None = None,
 ) -> ClaudeAgentOptions:
     """Agent options that expose our 4 MCP tools and nothing else.
 
@@ -81,8 +92,12 @@ def build_options(
     the output cleaner reads its verified customer to decide which order
     details the model may see. Without one, a fresh CaseFacts is used.
     in_process serves the MCP server in this process instead of over stdio.
+    server_env adds environment variables for the stdio server process.
     """
+    if in_process and server_env:
+        raise ValueError("server_env applies only to the stdio server, not in_process.")
     case: CaseFacts = facts if facts is not None else CaseFacts()
+    server = in_process_server() if in_process else stdio_server(server_env)
     post_tool_use = [
         HookMatcher(
             matcher=CLEAN_OUTPUT_MATCHER,
@@ -95,7 +110,7 @@ def build_options(
         system_prompt=SYSTEM_PROMPT,  # a plain string replaces Claude Code's own prompt
         max_turns=MAX_TURNS,
         cwd=PROJECT_ROOT,  # so `uv run` finds this project when it starts the server
-        mcp_servers={SERVER_NAME: in_process_server() if in_process else STDIO_SERVER},
+        mcp_servers={SERVER_NAME: server},
         tools=[],  # no built-in tools at all: no Bash, Read, Write, WebFetch ...
         allowed_tools=[mcp_tool_name(tool) for tool in TOOL_NAMES],  # exact names, no wildcard
         # Isolation: ignore the developer's own ~/.claude settings, hooks,
@@ -123,7 +138,19 @@ def build_options(
 @dataclass
 class SDKRun:
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # The tool result text the model received, one per tool call, in the same
+    # order. It is after the hooks ran, so it shows what the model really saw.
+    outputs: list[str] = field(default_factory=list)
     result: ResultMessage | None = None
+
+
+def result_text(content: str | list[dict[str, Any]] | None) -> str:
+    """A ToolResultBlock's content as one string: plain text, or its text parts joined."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    return "\n".join(part["text"] for part in content if part.get("type") == "text")
 
 
 def collect(messages: Iterable[Message]) -> SDKRun:
@@ -140,6 +167,7 @@ def collect(messages: Iterable[Message]) -> SDKRun:
                 if isinstance(block, ToolResultBlock) and block.tool_use_id in requested:
                     call = requested[block.tool_use_id]
                     sdk_run.tool_calls.append(ToolCall(call.name, call.input, bool(block.is_error)))
+                    sdk_run.outputs.append(result_text(block.content))
         elif isinstance(message, ResultMessage):
             sdk_run.result = message
     return sdk_run

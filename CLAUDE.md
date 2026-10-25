@@ -11,6 +11,8 @@ Agent SDK hooks → escalation, case facts and multi-turn sessions. See README.m
 - Web: `npm --prefix web run lint|typecheck|test`; app via `uv run uvicorn
   ex1_support_agent.api:create_app_from_env --factory --port 8000` + `npm --prefix web run dev`
 - Tests: `uv run pytest --cov` (must stay at or above 90% coverage)
+- Live scenarios (cost money, only on request): `uv run pytest -m live`. Assert on tool
+  calls, arguments and case facts, never on wording; each scenario must pass 3 of 3.
 - Types: `uv run mypy ex1_support_agent tests`
 - Smoke test against the real API: `uv run python -m ex1_support_agent.hello`
 - Live runs (cost money, never in tests): `uv run python -m ex1_support_agent.loop "…"`,

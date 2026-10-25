@@ -58,11 +58,11 @@ class SupportSession:
 
 @asynccontextmanager
 async def open_session(  # pragma: no cover - live
-    model: str, *, in_process: bool = False
+    model: str, *, in_process: bool = False, server_env: dict[str, str] | None = None
 ) -> AsyncIterator[SupportSession]:
     """Connect a client whose recorder hook writes into this session's own facts."""
     facts = CaseFacts()
-    options = build_options(model, facts=facts, in_process=in_process)
+    options = build_options(model, facts=facts, in_process=in_process, server_env=server_env)
     async with ClaudeSDKClient(options=options) as client:
         yield SupportSession(client, facts)
 

@@ -10,6 +10,7 @@ from ex1_support_agent.server import (
     NOT_ON_ACCOUNT_MESSAGE,
     HandoffSummary,
     error_result,
+    fail_next_from_env,
     mcp,
 )
 
@@ -202,6 +203,25 @@ async def test_server_does_not_retry_on_its_own():
     data = await call("lookup_order", {"order_id": "12345"})
 
     assert data["found"] is True
+
+
+@pytest.mark.anyio
+async def test_support_fail_next_env_makes_the_first_calls_time_out():
+    # The live suite sets this in the stdio server's env: its backend is in that process.
+    fail_next_from_env({"SUPPORT_FAIL_NEXT": "1"})
+
+    error = await call_error("lookup_order", {"order_id": "12345"})
+    data = await call("lookup_order", {"order_id": "12345"})
+
+    assert error["errorCategory"] == "transient"
+    assert data["found"] is True
+
+
+@pytest.mark.anyio
+async def test_without_support_fail_next_nothing_fails():
+    fail_next_from_env({})
+
+    assert (await call("lookup_order", {"order_id": "12345"}))["found"] is True
 
 
 @pytest.mark.anyio
