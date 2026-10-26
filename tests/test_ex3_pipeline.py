@@ -18,6 +18,7 @@ from ex3_extraction.pipeline import (
 )
 from ex3_extraction.scoring import MismatchKind, score_document
 from ex3_extraction.validation import IssueCode
+from ex3_extraction.variants import VARIANTS
 
 TRUTH = load_ground_truth()
 
@@ -268,18 +269,36 @@ def replay_client() -> Anthropic:
     return cast(Anthropic, client)
 
 
-def test_run_pipeline_reports_each_document_over_its_runs(replay_client: Anthropic, tmp_path: Path):
-    out_file = tmp_path / "runs" / "pipeline.json"
+def test_run_pipeline_saves_one_file_per_run_and_reports_each_document(
+    replay_client: Anthropic, tmp_path: Path
+):
+    report = run_pipeline(replay_client, "some-model", tmp_path, runs=2)
 
-    report = run_pipeline(replay_client, "some-model", out_file, runs=2)
-
-    assert report.startswith("2 runs x 12 documents")
+    assert report.startswith("variant A: 2 runs x 12 documents")
     assert "inv_01.txt   ok x2                1,1      24/24    -" in report
     assert (
         "inv_07.txt   conflict x2          2,2      24/24    -                      "
         "items_vs_base x2"
     ) in report
     assert "overall: 288/288 fields correct" in report
-    saved = json.loads(out_file.read_text(encoding="utf-8"))
-    assert len(saved["outcomes"]) == 24
-    assert saved["outcomes"][0]["changed_on_recheck"] == []
+    for run in (1, 2):
+        saved = json.loads((tmp_path / f"A_{run}.json").read_text(encoding="utf-8"))
+        assert (saved["variant"], saved["run"], len(saved["outcomes"])) == ("A", run, 12)
+    assert not (tmp_path / "A_3.json").exists()
+
+
+def test_run_pipeline_sends_the_variant_tool_and_prompt(tmp_path: Path):
+    """Variant C's examples and B's described schema reach the model."""
+    sent: list[dict[str, Any]] = []
+
+    class Recording(ReplayTruth):
+        def create(self, **kwargs: Any) -> Message:
+            sent.append(kwargs)
+            return super().create(**kwargs)
+
+    client = cast(Anthropic, type("Client", (), {"messages": Recording()})())
+    run_pipeline(client, "some-model", tmp_path, VARIANTS["C"], runs=1)
+
+    assert all(call["system"] == VARIANTS["C"].system_prompt for call in sent)
+    assert all(call["tools"] == [VARIANTS["C"].tool] for call in sent)
+    assert (tmp_path / "C_1.json").exists()

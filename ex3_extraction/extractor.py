@@ -16,7 +16,7 @@ from anthropic.types import Message, MessageParam, ToolChoiceToolParam, ToolPara
 from pydantic import BaseModel, ValidationError
 
 from ex3_extraction.ground_truth import load_document, load_ground_truth
-from ex3_extraction.schema import Invoice
+from ex3_extraction.schema import Invoice, json_schema
 
 TOOL_NAME = "record_invoice"
 BASELINE_FILE = Path("runs") / "baseline.json"  # runs/ is gitignored
@@ -39,15 +39,19 @@ is never the vendor's.
 expense in category_detail. For every other category, category_detail is null.
 </rules>"""
 
-RECORD_INVOICE: ToolParam = {
-    "name": TOOL_NAME,
-    "description": (
-        "Record the fields of one invoice exactly as the document states them. "
-        "Use null for any field the document does not contain; never guess or compute "
-        "a value. Call this once per document."
-    ),
-    "input_schema": Invoice.model_json_schema(),
-}
+TOOL_DESCRIPTION = (
+    "Record the fields of one invoice exactly as the document states them. "
+    "Use null for any field the document does not contain; never guess or compute "
+    "a value. Call this once per document."
+)
+
+
+def record_invoice_tool(input_schema: dict[str, Any]) -> ToolParam:
+    return {"name": TOOL_NAME, "description": TOOL_DESCRIPTION, "input_schema": input_schema}
+
+
+# The Step 2 and 3 tool: the schema without field descriptions (Step 4's variant A).
+RECORD_INVOICE = record_invoice_tool(json_schema(with_descriptions=False))
 
 # One schema and every document must yield an extraction, so the named tool is forced.
 # "any" would fit several schemas (one per document type); "auto" allows a prose answer.
@@ -87,14 +91,21 @@ def document_message(document: str) -> MessageParam:
     return {"role": "user", "content": f"<document>\n{document}\n</document>"}
 
 
-def call_model(client: Anthropic, model: str, messages: list[MessageParam]) -> Message:
+def call_model(
+    client: Anthropic,
+    model: str,
+    messages: list[MessageParam],
+    tool: ToolParam = RECORD_INVOICE,
+    system_prompt: str = SYSTEM_PROMPT,
+) -> Message:
     """One call with the forced extraction tool. Step 3's retries resend the whole
-    conversation: the document, the failed tool call and the errors."""
+    conversation: the document, the failed tool call and the errors. Step 4 swaps the
+    tool schema and the system prompt per variant."""
     return client.messages.create(
         model=model,
         max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        tools=[RECORD_INVOICE],
+        system=system_prompt,
+        tools=[tool],
         tool_choice=FORCE_RECORD_INVOICE,
         messages=messages,
     )

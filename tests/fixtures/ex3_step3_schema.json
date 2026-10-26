@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "Category": {
+      "enum": [
+        "hardware",
+        "software",
+        "services",
+        "travel",
+        "other"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "LineItem": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^-?\\d+(\\.\\d+)?$",
+              "type": "string"
+            }
+          ],
+          "title": "Amount"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^-?\\d+(\\.\\d+)?$",
+              "type": "string"
+            }
+          ],
+          "title": "Quantity"
+        },
+        "unit_price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^-?\\d+(\\.\\d+)?$",
+              "type": "string"
+            }
+          ],
+          "title": "Unit Price"
+        }
+      },
+      "required": [
+        "description",
+        "quantity",
+        "unit_price",
+        "amount"
+      ],
+      "title": "LineItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "$ref": "#/$defs/Category"
+    },
+    "category_detail": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Category Detail"
+    },
+    "currency": {
+      "pattern": "^[A-Z]{3}$",
+      "title": "Currency",
+      "type": "string"
+    },
+    "due_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Due Date"
+    },
+    "invoice_date": {
+      "format": "date",
+      "title": "Invoice Date",
+      "type": "string"
+    },
+    "invoice_number": {
+      "title": "Invoice Number",
+      "type": "string"
+    },
+    "line_items": {
+      "items": {
+        "$ref": "#/$defs/LineItem"
+      },
+      "title": "Line Items",
+      "type": "array"
+    },
+    "stated_subtotal": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Stated Subtotal"
+    },
+    "stated_tax": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Stated Tax"
+    },
+    "stated_total": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "pattern": "^-?\\d+(\\.\\d+)?$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Stated Total"
+    },
+    "vendor_name": {
+      "title": "Vendor Name",
+      "type": "string"
+    },
+    "vendor_tax_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Vendor Tax Id"
+    }
+  },
+  "required": [
+    "vendor_name",
+    "invoice_number",
+    "invoice_date",
+    "vendor_tax_id",
+    "due_date",
+    "currency",
+    "category",
+    "category_detail",
+    "line_items",
+    "stated_subtotal",
+    "stated_tax",
+    "stated_total"
+  ],
+  "title": "Invoice",
+  "type": "object"
+}

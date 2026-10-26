@@ -1,5 +1,7 @@
 """The extraction tool, the zero-shot prompt and the call."""
 
+import json
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -18,7 +20,6 @@ from ex3_extraction.extractor import (
     to_result,
 )
 from ex3_extraction.ground_truth import load_ground_truth
-from ex3_extraction.schema import Invoice
 
 
 def valid_input() -> dict[str, Any]:
@@ -26,12 +27,14 @@ def valid_input() -> dict[str, Any]:
     return load_ground_truth()["inv_06.txt"].invoice.model_dump(mode="json")
 
 
-def test_the_tool_schema_is_the_invoice_schema():
-    """$defs and $ref stay in: the API accepts them (checked live with one call)."""
-    schema = Invoice.model_json_schema()
+def test_the_tool_schema_is_the_step_3_schema():
+    """Steps 2 and 3 used the schema without field descriptions; it stays that way.
+    $defs and $ref stay in: the API accepts them (checked live with one call)."""
+    step3 = json.loads(Path("tests/fixtures/ex3_step3_schema.json").read_text(encoding="utf-8"))
+    schema = RECORD_INVOICE["input_schema"]
 
-    assert RECORD_INVOICE["input_schema"] == schema
-    assert {"LineItem", "Category"} <= set(schema["$defs"])
+    assert schema == step3
+    assert {"LineItem", "Category"} <= set(step3["$defs"])
 
 
 def test_the_named_tool_is_forced():

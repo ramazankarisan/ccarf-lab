@@ -10,6 +10,7 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | 1 | The invoice schema, 12 invoices covering 12 edge cases, hand-written ground truth (no API) | `schema.py`, `corpus/`, `ground_truth.py` |
 | 2 | An extraction tool with forced `tool_choice`, a zero-shot baseline, field-level scoring | `extractor.py`, `scoring.py` |
 | 3 | A tighter money schema, semantic checks, retries only where a retry can help | `schema.py`, `validation.py`, `pipeline.py` |
+| 4 | Field descriptions and few-shot examples, measured one change at a time | `schema.py`, `variants.py`, `compare.py` |
 
 ## Design decisions
 
@@ -30,13 +31,16 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | Invalid input is retried, inconsistent numbers are re-checked once, absent values never | A retry fixes a misread. It can't add information the document lacks, or fix a document that doesn't add up. |
 | The re-check tells the model not to make values agree | Otherwise it "repairs" inv_07's printed total to the sum of its items: a fabrication that passes validation. A document that still disagrees ends as a conflict for a human. |
 | Fields that change on the re-check are recorded (`changed_on_recheck`) | Code can't tell a fixed misread (1400 → 1440) from a fabricated fix (1203 → 1163): both make the numbers agree. Provenance lets a human audit it. |
+| Descriptions and few-shot examples are separate variants (A → B → C) | One change at a time, or the effect can't be attributed. Field descriptions (B) fixed the catering error in 3 of 3 runs; examples (C) added nothing measurable on this corpus and cost about 480 more input tokens per document. |
+| Prompts, descriptions and examples share nothing with the corpus | A test checks every model-facing text for corpus vendors, numbers, products and tax IDs, and for "catering". Otherwise the score measures memory, not extraction. |
 | Free text is scored by what downstream needs | Identifiers, dates, codes and numbers are exact. Vendor names ignore case, item descriptions aren't scored, and `category_detail` counts presence. Otherwise copying `KESTREL NETWORKS CORP.` as printed would score as an error, and real changes would hide in the noise. |
 
 ## Run it
 
 ```bash
 uv run python -m ex3_extraction.extractor   # 3 runs x 12 documents, about 1.5 cents with Haiku; saves runs/baseline.json
-uv run python -m ex3_extraction.pipeline    # 3 runs x 12 documents with checks and retries; saves runs/pipeline.json
+uv run python -m ex3_extraction.pipeline --variant B   # 3 runs x 12 documents with checks and retries; saves runs/B_1..3.json
+uv run python -m ex3_extraction.compare A B C          # the variants side by side, re-scored from runs/
 ```
 
 ## The corpus

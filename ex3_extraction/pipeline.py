@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 from ex3_extraction.extractor import (
     TOOL_NAME,
+    ExtractionResult,
     TokenUsage,
     call_model,
     document_message,
@@ -39,7 +40,9 @@ from ex3_extraction.extractor import (
 )
 from ex3_extraction.ground_truth import load_document, load_ground_truth
 from ex3_extraction.schema import Invoice
+from ex3_extraction.scoring import DocScore, score_document
 from ex3_extraction.validation import Issue, check
+from ex3_extraction.variants import VARIANTS, A, Variant
 
 MAX_INVALID_RETRIES = 2  # after the first call: at most 3 calls for an invalid input
 
@@ -121,7 +124,7 @@ def bullets(lines: list[str]) -> str:
     return "\n".join(f"- {line}" for line in lines)
 
 
-def extract_with_retries(client: Anthropic, model: str, doc: str) -> Outcome:
+def extract_with_retries(client: Anthropic, model: str, doc: str, variant: Variant = A) -> Outcome:
     messages: list[MessageParam] = [document_message(load_document(doc))]
     attempts: list[Attempt] = []
     invalid_retries = 0
@@ -141,7 +144,7 @@ def extract_with_retries(client: Anthropic, model: str, doc: str) -> Outcome:
         )
 
     while True:
-        response = call_model(client, model, messages)
+        response = call_model(client, model, messages, variant.tool, variant.system_prompt)
         usage = TokenUsage(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
@@ -178,37 +181,49 @@ def extract_with_retries(client: Anthropic, model: str, doc: str) -> Outcome:
         messages += feedback(response, tool_use, text)
 
 
-PIPELINE_FILE = Path("runs") / "pipeline.json"  # runs/ is gitignored
+RUNS_DIR = Path("runs")  # gitignored
 
 
-def run_pipeline(client: Anthropic, model: str, out_file: Path, runs: int = 3) -> str:
-    """Every corpus document `runs` times through the pipeline. Per document: the
-    statuses, the calls, the fields changed on re-check, the conflicts, and the score
-    of the final extraction against the ground truth. Saves every outcome."""
-    from ex3_extraction.extractor import ExtractionResult
-    from ex3_extraction.scoring import score_document
+def run_file(runs_dir: Path, variant_name: str, run: int) -> Path:
+    """runs/B_2.json: variant B, run 2."""
+    return runs_dir / f"{variant_name}_{run}.json"
 
+
+def score_outcome(outcome: Outcome, truth: Invoice) -> DocScore:
+    """Score the pipeline's final extraction like any Step 2 result."""
+    last = outcome.attempts[-1]
+    result = ExtractionResult(
+        doc=outcome.doc,
+        invoice=outcome.invoice,
+        raw_input=last.raw_input,
+        validation_error=last.validation_error,
+        usage=last.usage,
+    )
+    return score_document(truth, result)
+
+
+def run_pipeline(
+    client: Anthropic, model: str, runs_dir: Path, variant: Variant = A, runs: int = 3
+) -> str:
+    """Every corpus document `runs` times through the pipeline with one variant. Saves
+    each run to runs/{variant}_{n}.json and reports per document: the statuses, the
+    calls, the fields changed on re-check, the conflicts and the score."""
     truth = load_ground_truth()
-    by_doc: dict[str, list[tuple[Outcome, int]]] = {doc: [] for doc in sorted(truth)}
-    for _ in range(runs):
-        for doc in by_doc:
-            outcome = extract_with_retries(client, model, doc)
-            last = outcome.attempts[-1]
-            result = ExtractionResult(
-                doc=doc,
-                invoice=outcome.invoice,
-                raw_input=last.raw_input,
-                validation_error=last.validation_error,
-                usage=last.usage,
-            )
-            by_doc[doc].append((outcome, score_document(truth[doc].invoice, result).correct))
-
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    record = {
-        "model": model,
-        "outcomes": [o.model_dump(mode="json") for runs_ in by_doc.values() for o, _ in runs_],
-    }
-    out_file.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    by_doc: dict[str, list[Outcome]] = {doc: [] for doc in sorted(truth)}
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    for run in range(1, runs + 1):
+        outcomes = [extract_with_retries(client, model, doc, variant) for doc in by_doc]
+        record = {
+            "model": model,
+            "variant": variant.name,
+            "run": run,
+            "outcomes": [outcome.model_dump(mode="json") for outcome in outcomes],
+        }
+        run_file(runs_dir, variant.name, run).write_text(
+            json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        for outcome in outcomes:
+            by_doc[outcome.doc].append(outcome)
 
     def counted(labels: list[str]) -> str:
         return ", ".join(f"{label} x{n}" for label, n in Counter(labels).items()) or "-"
@@ -219,13 +234,12 @@ def run_pipeline(client: Anthropic, model: str, out_file: Path, runs: int = 3) -
         return " ".join([*padded, *cells[len(widths) :]]).rstrip()
 
     lines = [
-        f"{runs} runs x {len(by_doc)} documents",
+        f"variant {variant.name}: {runs} runs x {len(by_doc)} documents",
         row("doc", "status", "calls", "correct", "changed_on_recheck", "conflicts"),
     ]
     total = 0
-    for doc, results in by_doc.items():
-        outcomes = [o for o, _ in results]
-        correct = sum(c for _, c in results)
+    for doc, outcomes in by_doc.items():
+        correct = sum(score_outcome(o, truth[doc].invoice).correct for o in outcomes)
         total += correct
         status = counted([o.status.value for o in outcomes])
         calls = ",".join(str(len(o.attempts)) for o in outcomes)
@@ -233,12 +247,20 @@ def run_pipeline(client: Anthropic, model: str, out_file: Path, runs: int = 3) -
         conflicts = counted([i.code.value for o in outcomes for i in o.conflicts])
         lines.append(row(doc, status, calls, f"{correct}/{runs * 12}", changed, conflicts))
     lines.append(f"\noverall: {total}/{runs * len(by_doc) * 12} fields correct")
-    lines.append(f"saved: {out_file}")
+    lines.append(f"saved: {run_file(runs_dir, variant.name, 1)} .. _{runs}.json")
     return "\n".join(lines)
 
 
 if __name__ == "__main__":
+    import argparse
+
     from dotenv import find_dotenv, load_dotenv
 
+    parser = argparse.ArgumentParser(description="Run the corpus through the Step 3 pipeline.")
+    parser.add_argument("--variant", choices=sorted(VARIANTS), default="A")
+    parser.add_argument("--runs", type=int, default=3)
+    args = parser.parse_args()
     load_dotenv(find_dotenv(usecwd=True))
-    print(run_pipeline(Anthropic(), os.environ["MODEL"], PIPELINE_FILE))
+    print(
+        run_pipeline(Anthropic(), os.environ["MODEL"], RUNS_DIR, VARIANTS[args.variant], args.runs)
+    )
