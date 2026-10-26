@@ -11,6 +11,7 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | 2 | An extraction tool with forced `tool_choice`, a zero-shot baseline, field-level scoring | `extractor.py`, `scoring.py` |
 | 3 | A tighter money schema, semantic checks, retries only where a retry can help | `schema.py`, `validation.py`, `pipeline.py` |
 | 4 | Field descriptions and few-shot examples, measured one change at a time | `schema.py`, `variants.py`, `compare.py` |
+| 5 | The Message Batches API: one batch, results matched by custom_id, a second batch for what failed | `batch.py` |
 
 ## Design decisions
 
@@ -33,6 +34,8 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | Fields that change on the re-check are recorded (`changed_on_recheck`) | Code can't tell a fixed misread (1400 → 1440) from a fabricated fix (1203 → 1163): both make the numbers agree. Provenance lets a human audit it. |
 | Descriptions and few-shot examples are separate variants (A → B → C) | One change at a time, or the effect can't be attributed. Field descriptions (B) fixed the catering error in 3 of 3 runs; examples (C) added nothing measurable on this corpus and cost about 480 more input tokens per document. |
 | Prompts, descriptions and examples share nothing with the corpus | A test checks every model-facing text for corpus vendors, numbers, products and tax IDs, and for "catering". Otherwise the score measures memory, not extraction. |
+| Batch results are matched by `custom_id`, never by position | Results come back in any order. The custom_id is the document name without `.txt`, because the API allows only letters, digits, `_` and `-`. |
+| Batch retries are a second batch, not a loop | A batch request gets one answer. Errored requests are fixed and sent fresh; invalid and inconsistent extractions go back with the Step 3 feedback (document, failed output, specific errors). |
 | Free text is scored by what downstream needs | Identifiers, dates, codes and numbers are exact. Vendor names ignore case, item descriptions aren't scored, and `category_detail` counts presence. Otherwise copying `KESTREL NETWORKS CORP.` as printed would score as an error, and real changes would hide in the noise. |
 
 ## Run it
@@ -41,6 +44,7 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 uv run python -m ex3_extraction.extractor   # 3 runs x 12 documents, about 1.5 cents with Haiku; saves runs/baseline.json
 uv run python -m ex3_extraction.pipeline --variant B   # 3 runs x 12 documents with checks and retries; saves runs/B_1..3.json
 uv run python -m ex3_extraction.compare A B C          # the variants side by side, re-scored from runs/
+uv run python -m ex3_extraction.batch                  # 11 requests (one broken on purpose) as a batch, then a second batch
 ```
 
 ## The corpus
