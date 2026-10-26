@@ -9,6 +9,7 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 |---|---|---|
 | 1 | The invoice schema, 12 invoices covering 12 edge cases, hand-written ground truth (no API) | `schema.py`, `corpus/`, `ground_truth.py` |
 | 2 | An extraction tool with forced `tool_choice`, a zero-shot baseline, field-level scoring | `extractor.py`, `scoring.py` |
+| 3 | A tighter money schema, semantic checks, retries only where a retry can help | `schema.py`, `validation.py`, `pipeline.py` |
 
 ## Design decisions
 
@@ -25,12 +26,17 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | The schema is the tool's `input_schema`, and the named tool is forced | One schema, and every document must produce an extraction. The API accepts Pydantic's `$defs`/`$ref`. Forced tool choice works on Haiku 5.5; Opus 5.5 and Sonnet 5.5 reject it, so there it would be `auto` with `strict: true`. |
 | Tool input is validated again with Pydantic | The tool forces the shape, not the meaning: JSON Schema can't express "a detail only for `other`". |
 | Mismatches are classed as fabrication, omission or wrong | Each points to a different fix. A fabricated tax ID is worse than a missed one. |
+| Money is a number or a plain decimal string, in the schema and in the parser | The model sees the format up front, so `"1.037,58"` and `"null"` break the schema it was given. The parser enforces the same pattern on what comes back. |
+| Invalid input is retried, inconsistent numbers are re-checked once, absent values never | A retry fixes a misread. It can't add information the document lacks, or fix a document that doesn't add up. |
+| The re-check tells the model not to make values agree | Otherwise it "repairs" inv_07's printed total to the sum of its items: a fabrication that passes validation. A document that still disagrees ends as a conflict for a human. |
+| Fields that change on the re-check are recorded (`changed_on_recheck`) | Code can't tell a fixed misread (1400 → 1440) from a fabricated fix (1203 → 1163): both make the numbers agree. Provenance lets a human audit it. |
 | Free text is scored by what downstream needs | Identifiers, dates, codes and numbers are exact. Vendor names ignore case, item descriptions aren't scored, and `category_detail` counts presence. Otherwise copying `KESTREL NETWORKS CORP.` as printed would score as an error, and real changes would hide in the noise. |
 
 ## Run it
 
 ```bash
 uv run python -m ex3_extraction.extractor   # 3 runs x 12 documents, about 1.5 cents with Haiku; saves runs/baseline.json
+uv run python -m ex3_extraction.pipeline    # 3 runs x 12 documents with checks and retries; saves runs/pipeline.json
 ```
 
 ## The corpus

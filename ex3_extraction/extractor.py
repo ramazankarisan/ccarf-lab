@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
-from anthropic.types import Message, ToolChoiceToolParam, ToolParam
+from anthropic.types import Message, MessageParam, ToolChoiceToolParam, ToolParam
 from pydantic import BaseModel, ValidationError
 
 from ex3_extraction.ground_truth import load_document, load_ground_truth
@@ -70,24 +70,39 @@ class ExtractionResult(BaseModel):
 
 
 def parse_invoice(tool_input: dict[str, Any]) -> tuple[Invoice | None, str | None]:
-    """The validated invoice, or None and the validation error. No retry here (Step 3)."""
+    """The validated invoice, or None and the validation errors, one line per field
+    ("line_items.0.quantity: ..."), short enough to send back to the model."""
     try:
         return Invoice.model_validate(tool_input), None
     except ValidationError as exc:
-        return None, str(exc)
+        lines = [
+            f"{'.'.join(str(part) for part in error['loc']) or 'invoice'}: {error['msg']}"
+            for error in exc.errors()
+        ]
+        return None, "\n".join(lines)
 
 
-def extract(client: Anthropic, model: str, document: str) -> Message:
-    """One extraction call. The document goes in tags, so its text is data, not
-    instructions."""
+def document_message(document: str) -> MessageParam:
+    """The document goes in tags, so its text is data, not instructions."""
+    return {"role": "user", "content": f"<document>\n{document}\n</document>"}
+
+
+def call_model(client: Anthropic, model: str, messages: list[MessageParam]) -> Message:
+    """One call with the forced extraction tool. Step 3's retries resend the whole
+    conversation: the document, the failed tool call and the errors."""
     return client.messages.create(
         model=model,
         max_tokens=MAX_TOKENS,
         system=SYSTEM_PROMPT,
         tools=[RECORD_INVOICE],
         tool_choice=FORCE_RECORD_INVOICE,
-        messages=[{"role": "user", "content": f"<document>\n{document}\n</document>"}],
+        messages=messages,
     )
+
+
+def extract(client: Anthropic, model: str, document: str) -> Message:
+    """One extraction call, no retry."""
+    return call_model(client, model, [document_message(document)])
 
 
 def to_result(doc: str, response: Message) -> ExtractionResult:

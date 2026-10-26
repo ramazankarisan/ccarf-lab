@@ -11,7 +11,7 @@ from ex3_extraction.ground_truth import (
     load_document,
     load_ground_truth,
 )
-from ex3_extraction.schema import Invoice
+from ex3_extraction.validation import check
 
 TRUTH = load_ground_truth()
 DOCS = sorted(TRUTH)
@@ -63,24 +63,11 @@ def test_absent_fields_are_null():
     assert all(entry.invoice.stated_total is None for entry in entries_with(10))
 
 
-def printed_numbers_agree(invoice: Invoice) -> bool:
-    """The two relations Step 3 will check. Only values printed on the document count:
-    the items sum to the subtotal (or to the total when no subtotal is printed), and
-    subtotal + tax = total when all three are printed."""
-    subtotal, tax, total = invoice.stated_subtotal, invoice.stated_tax, invoice.stated_total
-    items_sum = sum(item.amount for item in invoice.line_items)
-    target = subtotal if subtotal is not None else total
-    items_ok = not invoice.line_items or target is None or items_sum == target
-    if subtotal is None or tax is None or total is None:
-        return items_ok
-    return items_ok and subtotal + tax == total
-
-
 @pytest.mark.parametrize("name", DOCS)
 def test_only_the_broken_invoice_fails_the_number_checks(name: str):
     """VAT on top is not a discrepancy: with subtotal and tax extracted separately,
-    the checks flag case 7 and nothing else. No false positives."""
-    assert printed_numbers_agree(TRUTH[name].invoice) is (7 not in TRUTH[name].edge_cases)
+    the Step 3 checks flag case 7 and nothing else. No false positives."""
+    assert (check(TRUTH[name].invoice) == []) is (7 not in TRUTH[name].edge_cases)
 
 
 def test_the_mismatch_keeps_the_printed_total():

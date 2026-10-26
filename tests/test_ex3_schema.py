@@ -145,3 +145,48 @@ def test_unknown_keys_are_rejected():
     """A typo like vendor_taxid must fail, not look like a missing tax ID."""
     with pytest.raises(ValidationError, match="Extra inputs"):
         Invoice.model_validate(invoice_data(vendor_taxid="DE000000000"))
+
+
+# --- Money: the same format rule in the schema and in the parser --------------------
+
+MONEY_FIELDS = ("stated_subtotal", "stated_tax", "stated_total")
+ITEM_FIELDS = ("quantity", "unit_price", "amount")
+NUMBER_OR_PLAIN_STRING = [
+    {"type": "number"},
+    {"type": "string", "pattern": r"^-?\d+(\.\d+)?$"},
+]
+
+
+@pytest.mark.parametrize("field", MONEY_FIELDS)
+def test_invoice_money_schema_is_a_number_or_a_plain_decimal_string_or_null(field: str):
+    schema = Invoice.model_json_schema()["properties"][field]
+
+    assert schema["anyOf"] == [*NUMBER_OR_PLAIN_STRING, {"type": "null"}]
+
+
+@pytest.mark.parametrize("field", ITEM_FIELDS)
+def test_line_item_numbers_have_the_same_schema_without_null(field: str):
+    schema = Invoice.model_json_schema()["$defs"]["LineItem"]["properties"][field]
+
+    assert schema["anyOf"] == NUMBER_OR_PLAIN_STRING
+
+
+@pytest.mark.parametrize("value", ["1.037,58", "null", "1E3", " 12.5", "12.", "€12.50", ""])
+def test_strings_outside_the_pattern_are_rejected(value: str):
+    """What the earlier baseline runs sent ("1.037,58", "null") and other near misses."""
+    with pytest.raises(ValidationError, match="plain decimal string"):
+        Invoice.model_validate(invoice_data(stated_total=value))
+
+
+@pytest.mark.parametrize("value", ["1234.56", "-5.00", "12", 1234.56, 12])
+def test_numbers_and_plain_decimal_strings_are_accepted(value: str | float):
+    invoice = Invoice.model_validate(invoice_data(stated_total=value))
+
+    assert invoice.stated_total == Decimal(str(value))
+
+
+def test_line_item_quantities_follow_the_same_rule():
+    item = {"description": "Taxi ride", "quantity": "null", "unit_price": 1, "amount": 1}
+
+    with pytest.raises(ValidationError, match=r"line_items\.0\.quantity"):
+        Invoice.model_validate(invoice_data(line_items=[item]))
