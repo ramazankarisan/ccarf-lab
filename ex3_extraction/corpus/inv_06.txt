@@ -1,0 +1,14 @@
+Café Lindgren Catering
+Hafenweg 9, Hamburg
+VAT ID: DE000000077
+
+INVOICE CL-2026-311
+Invoice date: 20 October 2026
+Payment due: 3 November 2026
+Event: Team offsite lunch, 19 October 2026
+
+Lunch buffet           25 x EUR 28.00   =  EUR 700.00
+Coffee and pastries    25 x EUR  9.50   =  EUR 237.50
+Delivery and setup      1 x EUR 45.00   =  EUR  45.00
+
+Total (prices include VAT): EUR 982.50

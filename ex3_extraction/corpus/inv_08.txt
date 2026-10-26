@@ -1,0 +1,18 @@
+Datenwerk Schmidt GmbH
+Industriestraße 12, 70565 Stuttgart
+USt-IdNr.: DE000000088
+
+RECHNUNG
+
+Rechnungsnummer: R-2026-1045
+Rechnungsdatum:  19.10.2026
+Fällig bis:      02.11.2026
+
+Pos.  Beschreibung                          Menge  Einzelpreis   Gesamt
+1     Wartungspauschale Server, Oktober 2026    2     518,79 €   1.037,58 €
+
+Nettobetrag                                                    1.037,58 €
+zzgl. 19 % USt.                                                  197,14 €
+Gesamtbetrag                                                   1.234,72 €
+
+Bitte überweisen Sie den Gesamtbetrag bis zum Fälligkeitsdatum.

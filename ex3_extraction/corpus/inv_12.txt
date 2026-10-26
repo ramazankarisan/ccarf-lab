@@ -1,0 +1,25 @@
+THE GREY HERON HOTEL
+3 Quayside Road, Northwick
+
+INVOICE
+
+Invoice no.:      GH/26/00731
+Booking ref.:     5521-AX
+Your PO:          PO-88-1204
+
+Guest:            Daniel Brooks
+Company:          Fernhill Labs Ltd
+Company VAT no.:  GB000000012
+
+Arrival:          12 Oct 2026
+Departure:        15 Oct 2026
+Date of issue:    15 Oct 2026
+
+Description                  Qty    Price     Amount
+Room, standard double          3   145.00     435.00
+Breakfast                      3    18.00      54.00
+
+Total (incl. VAT)                          GBP 489.00
+VAT included @ 20%                          GBP 81.50
+
+Settled by company card at checkout.

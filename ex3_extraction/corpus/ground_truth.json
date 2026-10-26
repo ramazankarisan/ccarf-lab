@@ -1,0 +1,238 @@
+{
+  "inv_01.txt": {
+    "edge_cases": [1],
+    "invoice": {
+      "vendor_name": "Brightwater Devices Inc.",
+      "invoice_number": "BWD-10482",
+      "invoice_date": "2026-10-02",
+      "vendor_tax_id": "00-0000001",
+      "due_date": "2026-11-01",
+      "currency": "USD",
+      "category": "hardware",
+      "category_detail": null,
+      "line_items": [
+        {"description": "USB-C docking station", "quantity": "4", "unit_price": "189.00", "amount": "756.00"},
+        {"description": "Monitor arm, single", "quantity": "4", "unit_price": "64.50", "amount": "258.00"},
+        {"description": "HDMI cable, 2 m", "quantity": "10", "unit_price": "8.75", "amount": "87.50"}
+      ],
+      "stated_subtotal": null,
+      "stated_tax": null,
+      "stated_total": "1101.50"
+    }
+  },
+  "inv_02.txt": {
+    "edge_cases": [2],
+    "invoice": {
+      "vendor_name": "Vogt Process Consulting",
+      "invoice_number": "2026-17",
+      "invoice_date": "2026-10-12",
+      "vendor_tax_id": "00/000/12345",
+      "due_date": "2026-10-26",
+      "currency": "EUR",
+      "category": "services",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Consulting, 5 to 7 October", "quantity": "3", "unit_price": "850.00", "amount": "2550.00"}
+      ],
+      "stated_subtotal": null,
+      "stated_tax": null,
+      "stated_total": "2550.00"
+    }
+  },
+  "inv_03.txt": {
+    "edge_cases": [3, 4, 5],
+    "invoice": {
+      "vendor_name": "Metro Taxi Berlin",
+      "invoice_number": "88213",
+      "invoice_date": "2026-10-09",
+      "vendor_tax_id": null,
+      "due_date": null,
+      "currency": "EUR",
+      "category": "travel",
+      "category_detail": null,
+      "line_items": [],
+      "stated_subtotal": null,
+      "stated_tax": null,
+      "stated_total": "23.40"
+    }
+  },
+  "inv_04.txt": {
+    "edge_cases": [4],
+    "invoice": {
+      "vendor_name": "Pixelpine Software LLC",
+      "invoice_number": "PP-3391",
+      "invoice_date": "2026-10-15",
+      "vendor_tax_id": null,
+      "due_date": "2026-10-29",
+      "currency": "USD",
+      "category": "software",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Team plan, per seat, November 2026", "quantity": "10", "unit_price": "12.00", "amount": "120.00"},
+        {"description": "Priority support add-on", "quantity": "1", "unit_price": "30.00", "amount": "30.00"}
+      ],
+      "stated_subtotal": null,
+      "stated_tax": null,
+      "stated_total": "150.00"
+    }
+  },
+  "inv_05.txt": {
+    "edge_cases": [5, 9],
+    "invoice": {
+      "vendor_name": "Hollins & Reed Translation Ltd",
+      "invoice_number": "HR-0917",
+      "invoice_date": "2026-10-14",
+      "vendor_tax_id": "GB000000042",
+      "due_date": null,
+      "currency": "GBP",
+      "category": "services",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Translation English to German, product manual", "quantity": "3200", "unit_price": "0.09", "amount": "288.00"}
+      ],
+      "stated_subtotal": "288.00",
+      "stated_tax": "57.60",
+      "stated_total": "345.60"
+    }
+  },
+  "inv_06.txt": {
+    "edge_cases": [6],
+    "invoice": {
+      "vendor_name": "Café Lindgren Catering",
+      "invoice_number": "CL-2026-311",
+      "invoice_date": "2026-10-20",
+      "vendor_tax_id": "DE000000077",
+      "due_date": "2026-11-03",
+      "currency": "EUR",
+      "category": "other",
+      "category_detail": "catering",
+      "line_items": [
+        {"description": "Lunch buffet", "quantity": "25", "unit_price": "28.00", "amount": "700.00"},
+        {"description": "Coffee and pastries", "quantity": "25", "unit_price": "9.50", "amount": "237.50"},
+        {"description": "Delivery and setup", "quantity": "1", "unit_price": "45.00", "amount": "45.00"}
+      ],
+      "stated_subtotal": null,
+      "stated_tax": null,
+      "stated_total": "982.50"
+    }
+  },
+  "inv_07.txt": {
+    "edge_cases": [7],
+    "invoice": {
+      "vendor_name": "Kestrel Networks Corp.",
+      "invoice_number": "INV-7731",
+      "invoice_date": "2026-10-08",
+      "vendor_tax_id": "00-0000007",
+      "due_date": "2026-10-22",
+      "currency": "USD",
+      "category": "hardware",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Wi-Fi 6 access point", "quantity": "6", "unit_price": "149.00", "amount": "894.00"},
+        {"description": "PoE switch, 8 port", "quantity": "1", "unit_price": "219.00", "amount": "219.00"},
+        {"description": "Patch cable, 1 m", "quantity": "20", "unit_price": "2.50", "amount": "50.00"}
+      ],
+      "stated_subtotal": null,
+      "stated_tax": null,
+      "stated_total": "1203.00"
+    }
+  },
+  "inv_08.txt": {
+    "edge_cases": [8, 9],
+    "invoice": {
+      "vendor_name": "Datenwerk Schmidt GmbH",
+      "invoice_number": "R-2026-1045",
+      "invoice_date": "2026-10-19",
+      "vendor_tax_id": "DE000000088",
+      "due_date": "2026-11-02",
+      "currency": "EUR",
+      "category": "services",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Wartungspauschale Server, Oktober 2026", "quantity": "2", "unit_price": "518.79", "amount": "1037.58"}
+      ],
+      "stated_subtotal": "1037.58",
+      "stated_tax": "197.14",
+      "stated_total": "1234.72"
+    }
+  },
+  "inv_09.txt": {
+    "edge_cases": [9],
+    "invoice": {
+      "vendor_name": "Ashby Components Ltd",
+      "invoice_number": "AC-55120",
+      "invoice_date": "2026-10-16",
+      "vendor_tax_id": "GB000000099",
+      "due_date": "2026-11-15",
+      "currency": "GBP",
+      "category": "hardware",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Laptop docking station", "quantity": "4", "unit_price": "210.00", "amount": "840.00"},
+        {"description": "Wireless keyboard", "quantity": "6", "unit_price": "60.00", "amount": "360.00"}
+      ],
+      "stated_subtotal": "1200.00",
+      "stated_tax": "240.00",
+      "stated_total": "1440.00"
+    }
+  },
+  "inv_10.txt": {
+    "edge_cases": [10],
+    "invoice": {
+      "vendor_name": "Marisol Ortega Design",
+      "invoice_number": "MO-031",
+      "invoice_date": "2026-10-23",
+      "vendor_tax_id": "00-0000010",
+      "due_date": "2026-11-06",
+      "currency": "USD",
+      "category": "services",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Logo concepts, 3 directions", "quantity": "12", "unit_price": "75.00", "amount": "900.00"},
+        {"description": "Revisions after feedback", "quantity": "4", "unit_price": "75.00", "amount": "300.00"}
+      ],
+      "stated_subtotal": null,
+      "stated_tax": null,
+      "stated_total": null
+    }
+  },
+  "inv_11.txt": {
+    "edge_cases": [11],
+    "invoice": {
+      "vendor_name": "Lone Oak Analytics",
+      "invoice_number": "LOA-2219",
+      "invoice_date": "2026-03-04",
+      "vendor_tax_id": "00-0000011",
+      "due_date": "2026-04-03",
+      "currency": "USD",
+      "category": "software",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Analytics platform, annual license", "quantity": "1", "unit_price": "4800.00", "amount": "4800.00"}
+      ],
+      "stated_subtotal": null,
+      "stated_tax": null,
+      "stated_total": "4800.00"
+    }
+  },
+  "inv_12.txt": {
+    "edge_cases": [4, 5, 12],
+    "invoice": {
+      "vendor_name": "The Grey Heron Hotel",
+      "invoice_number": "GH/26/00731",
+      "invoice_date": "2026-10-15",
+      "vendor_tax_id": null,
+      "due_date": null,
+      "currency": "GBP",
+      "category": "travel",
+      "category_detail": null,
+      "line_items": [
+        {"description": "Room, standard double", "quantity": "3", "unit_price": "145.00", "amount": "435.00"},
+        {"description": "Breakfast", "quantity": "3", "unit_price": "18.00", "amount": "54.00"}
+      ],
+      "stated_subtotal": null,
+      "stated_tax": "81.50",
+      "stated_total": "489.00"
+    }
+  }
+}

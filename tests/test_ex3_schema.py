@@ -1,0 +1,147 @@
+"""The invoice schema: required-but-nullable fields, Decimal money, the category rule."""
+
+import json
+from datetime import date
+from decimal import Decimal
+from typing import Any
+
+import pytest
+from pydantic import ValidationError
+
+from ex3_extraction.schema import Category, Invoice, LineItem
+
+NULLABLE = (
+    "vendor_tax_id",
+    "due_date",
+    "category_detail",
+    "stated_subtotal",
+    "stated_tax",
+    "stated_total",
+)
+
+
+def invoice_data(**overrides: Any) -> dict[str, Any]:
+    """A valid extraction as JSON-like data; overrides replace single fields."""
+    data: dict[str, Any] = {
+        "vendor_name": "Nordlicht Office Supplies GmbH",
+        "invoice_number": "NL-2026-0042",
+        "invoice_date": "2026-10-19",
+        "vendor_tax_id": "DE000000000",
+        "due_date": "2026-11-18",
+        "currency": "EUR",
+        "category": "hardware",
+        "category_detail": None,
+        "line_items": [
+            {"description": "Desk lamp", "quantity": 2, "unit_price": "24.50", "amount": "49.00"}
+        ],
+        "stated_subtotal": "49.00",
+        "stated_tax": "9.31",
+        "stated_total": "58.31",
+    }
+    return data | overrides
+
+
+def test_a_complete_invoice_parses_into_typed_values():
+    invoice = Invoice.model_validate(invoice_data())
+
+    assert invoice.invoice_date == date(2026, 10, 19)
+    assert invoice.currency == "EUR"
+    assert invoice.category is Category.HARDWARE
+    assert invoice.line_items[0].amount == Decimal("49.00")
+
+
+@pytest.mark.parametrize("field", NULLABLE)
+def test_nullable_fields_accept_null(field: str):
+    invoice = Invoice.model_validate(invoice_data(**{field: None}))
+
+    assert getattr(invoice, field) is None
+
+
+@pytest.mark.parametrize("field", [*NULLABLE, "vendor_name", "line_items"])
+def test_every_field_is_required_even_when_null_is_allowed(field: str):
+    data = invoice_data()
+    del data[field]
+
+    with pytest.raises(ValidationError, match=field):
+        Invoice.model_validate(data)
+
+
+def test_the_json_schema_marks_nullable_fields_required():
+    """Step 2 sends this schema as the tool's input_schema, so the model sees the same rule."""
+    schema = Invoice.model_json_schema()
+
+    assert set(schema["required"]) == set(Invoice.model_fields)
+    assert {"type": "null"} in schema["properties"]["vendor_tax_id"]["anyOf"]
+
+
+def test_money_stays_exact():
+    item = LineItem.model_validate(
+        {"description": "Headphones", "quantity": 1, "unit_price": 129.99, "amount": 129.99}
+    )
+
+    assert item.amount == Decimal("129.99")
+    assert str(item.amount) == "129.99"
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", float("nan")])
+def test_money_rejects_nan_and_infinity(value: Any):
+    with pytest.raises(ValidationError):
+        LineItem.model_validate(
+            {"description": "x", "quantity": 1, "unit_price": value, "amount": "1.00"}
+        )
+
+
+def test_dates_must_already_be_iso():
+    """Turning 19.10.2026 into 2026-10-19 is the extractor's job, not the schema's."""
+    with pytest.raises(ValidationError, match="invoice_date"):
+        Invoice.model_validate(invoice_data(invoice_date="19.10.2026"))
+
+
+def test_output_json_uses_iso_dates_and_exact_money():
+    dumped = json.loads(Invoice.model_validate(invoice_data()).model_dump_json())
+
+    assert dumped["invoice_date"] == "2026-10-19"
+    assert dumped["stated_total"] == "58.31"
+
+
+def test_a_category_outside_the_enum_is_rejected():
+    with pytest.raises(ValidationError, match="category"):
+        Invoice.model_validate(invoice_data(category="catering"))
+
+
+def test_any_iso_currency_code_is_accepted():
+    """No enum: a CHF invoice stays CHF instead of being forced into EUR."""
+    assert Invoice.model_validate(invoice_data(currency="CHF")).currency == "CHF"
+
+
+@pytest.mark.parametrize("code", ["eur", "€", "EURO", "US", ""])
+def test_currency_must_be_an_iso_code(code: str):
+    with pytest.raises(ValidationError, match="currency"):
+        Invoice.model_validate(invoice_data(currency=code))
+
+
+def test_other_needs_a_detail():
+    invoice = Invoice.model_validate(invoice_data(category="other", category_detail="catering"))
+
+    assert invoice.category_detail == "catering"
+
+
+@pytest.mark.parametrize("detail", [None, "", "   "])
+def test_other_without_a_detail_is_rejected(detail: str | None):
+    with pytest.raises(ValidationError, match="needs a category_detail"):
+        Invoice.model_validate(invoice_data(category="other", category_detail=detail))
+
+
+def test_a_detail_without_other_is_rejected():
+    with pytest.raises(ValidationError, match="must be null"):
+        Invoice.model_validate(invoice_data(category="hardware", category_detail="lamps"))
+
+
+def test_line_items_may_be_empty():
+    assert Invoice.model_validate(invoice_data(line_items=[])).line_items == []
+
+
+def test_unknown_keys_are_rejected():
+    """A typo like vendor_taxid must fail, not look like a missing tax ID."""
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        Invoice.model_validate(invoice_data(vendor_taxid="DE000000000"))

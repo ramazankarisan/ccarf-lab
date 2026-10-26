@@ -14,7 +14,7 @@ pre-commit:
 
     - name: python types
       glob: "*.py"
-      run: uv run mypy ex1_support_agent tests
+      run: uv run mypy ex1_support_agent ex3_extraction tests
 
     - name: uv lock
       glob: "{pyproject.toml,uv.lock}"

@@ -1,0 +1,23 @@
+From: Lena Vogt <lena.vogt@example.com>
+To: Tom Ashworth <tom.ashworth@example.org>
+Date: Mon, 12 Oct 2026 09:14:00 +0200
+Subject: Invoice 2026-17 for last week's workshop
+
+Hi Tom,
+
+thanks again for having me. As promised, here is the invoice for the three days
+of consulting last week (5 to 7 October) at the day rate we agreed, EUR 850 per
+day, so EUR 2,550 in total. I'm a small business, so there's no VAT on this.
+
+Could you transfer it by 26 October 2026? Bank details are below.
+
+Invoice number: 2026-17
+
+Best,
+Lena
+
+--
+Lena Vogt
+Vogt Process Consulting
+Steuernummer 00/000/12345
+IBAN: on request

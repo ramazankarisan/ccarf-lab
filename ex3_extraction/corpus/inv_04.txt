@@ -1,0 +1,13 @@
+Pixelpine Software LLC
+88 Cedar Street, Boise, ID 83702
+support@example.com
+
+Invoice #PP-3391
+Issued: 2026-10-15
+Due:    2026-10-29
+
+Item                                   Qty   Price    Amount
+Team plan, per seat, November 2026      10   12.00    120.00
+Priority support add-on                  1   30.00     30.00
+
+Amount due: USD 150.00

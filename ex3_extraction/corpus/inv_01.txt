@@ -1,0 +1,22 @@
+BRIGHTWATER DEVICES INC.
+410 Harbor Lane, Portland, OR 97201
+billing@example.com | EIN 00-0000001
+
+INVOICE
+
+Invoice No:    BWD-10482
+Invoice Date:  October 2, 2026
+Due Date:      November 1, 2026
+
+Bill To:
+Fernhill Labs Ltd, Accounts Payable
+
+| Description              | Qty | Unit Price | Amount    |
+|--------------------------|-----|------------|-----------|
+| USB-C docking station    |   4 |    $189.00 |   $756.00 |
+| Monitor arm, single      |   4 |     $64.50 |   $258.00 |
+| HDMI cable, 2 m          |  10 |      $8.75 |    $87.50 |
+
+Total Due (USD): $1,101.50
+
+Payment by ACH within 30 days. Thank you for your business.
