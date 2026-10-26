@@ -8,6 +8,7 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | Step | Adds | Main files |
 |---|---|---|
 | 1 | The invoice schema, 12 invoices covering 12 edge cases, hand-written ground truth (no API) | `schema.py`, `corpus/`, `ground_truth.py` |
+| 2 | An extraction tool with forced `tool_choice`, a zero-shot baseline, field-level scoring | `extractor.py`, `scoring.py` |
 
 ## Design decisions
 
@@ -20,6 +21,17 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | Unknown keys are rejected | A typo like `vendor_taxid` would otherwise look like a missing tax ID. |
 | Ground truth records what the document says | For an invoice whose items don't add up, the expected total is the printed one. Spotting the gap is code's job. |
 | Corpus files have neutral names (`inv_01.txt`) | A name like `no_tax_id.txt` would leak the answer if it ever reached a prompt. The edge cases live in `ground_truth.json`. |
+
+| The schema is the tool's `input_schema`, and the named tool is forced | One schema, and every document must produce an extraction. The API accepts Pydantic's `$defs`/`$ref`. Forced tool choice works on Haiku 5.5; Opus 5.5 and Sonnet 5.5 reject it, so there it would be `auto` with `strict: true`. |
+| Tool input is validated again with Pydantic | The tool forces the shape, not the meaning: JSON Schema can't express "a detail only for `other`". |
+| Mismatches are classed as fabrication, omission or wrong | Each points to a different fix. A fabricated tax ID is worse than a missed one. |
+| Free text is scored by what downstream needs | Identifiers, dates, codes and numbers are exact. Vendor names ignore case, item descriptions aren't scored, and `category_detail` counts presence. Otherwise copying `KESTREL NETWORKS CORP.` as printed would score as an error, and real changes would hide in the noise. |
+
+## Run it
+
+```bash
+uv run python -m ex3_extraction.extractor   # 3 runs x 12 documents, about 1.5 cents with Haiku; saves runs/baseline.json
+```
 
 ## The corpus
 
