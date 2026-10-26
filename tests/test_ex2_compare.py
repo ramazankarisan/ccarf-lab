@@ -7,11 +7,11 @@ import pytest
 from anthropic import Anthropic
 from anthropic.types import Message
 
-from ex3_extraction.compare import compare, load_runs
-from ex3_extraction.extractor import TOOL_NAME
-from ex3_extraction.ground_truth import load_ground_truth
-from ex3_extraction.pipeline import run_pipeline
-from ex3_extraction.variants import VARIANTS
+from ex2_extraction.compare import compare, load_runs
+from ex2_extraction.extractor import TOOL_NAME
+from ex2_extraction.ground_truth import load_ground_truth
+from ex2_extraction.pipeline import run_pipeline
+from ex2_extraction.variants import VARIANTS
 
 TRUTH = load_ground_truth()
 

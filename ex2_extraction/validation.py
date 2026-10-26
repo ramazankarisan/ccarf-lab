@@ -14,7 +14,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel
 
-from ex3_extraction.schema import Invoice
+from ex2_extraction.schema import Invoice
 
 CENT = Decimal("0.01")
 

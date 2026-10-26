@@ -27,7 +27,7 @@ from anthropic.types.messages import MessageBatch, MessageBatchIndividualRespons
 from anthropic.types.messages.batch_create_params import Request
 from pydantic import BaseModel
 
-from ex3_extraction.extractor import (
+from ex2_extraction.extractor import (
     FORCE_RECORD_INVOICE,
     MAX_TOKENS,
     ExtractionResult,
@@ -35,8 +35,8 @@ from ex3_extraction.extractor import (
     document_message,
     parse_invoice,
 )
-from ex3_extraction.ground_truth import load_document, load_ground_truth
-from ex3_extraction.pipeline import (
+from ex2_extraction.ground_truth import load_document, load_ground_truth
+from ex2_extraction.pipeline import (
     FIX_INVALID,
     RECHECK,
     bullets,
@@ -44,17 +44,17 @@ from ex3_extraction.pipeline import (
     feedback,
     tool_call,
 )
-from ex3_extraction.schema import Invoice
-from ex3_extraction.scoring import score_document
-from ex3_extraction.validation import Issue, check
-from ex3_extraction.variants import B, Variant
+from ex2_extraction.schema import Invoice
+from ex2_extraction.scoring import score_document
+from ex2_extraction.validation import Issue, check
+from ex2_extraction.variants import B, Variant
 
 CUSTOM_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")  # the API's rule: no "." allowed
-DOCS = [f"inv_{n:02d}.txt" for n in range(1, 11)]  # ten documents, sent as they are
+DOCS = [f"inv_{n:02d}.txt" for n in range(1, 11)]
 BROKEN_DOC = "inv_11.txt"  # the eleventh is sent broken in round 1
 BROKEN_TOOL_CHOICE: ToolChoiceToolParam = {"type": "tool", "name": "record_receipt"}
 POLL_SECONDS = 15
-BATCH_FILE = Path("runs") / "batch.json"  # runs/ is gitignored
+BATCH_FILE = Path("runs") / "batch.json"
 
 
 class Status(StrEnum):

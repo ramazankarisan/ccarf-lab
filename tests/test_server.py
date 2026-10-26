@@ -128,7 +128,7 @@ async def test_escalate_to_human_returns_a_ticket_id():
     assert data == {"ticket_id": "ESC-0001"}
 
 
-# --- Descriptions (2.1) -------------------------------------------------------
+# --- Descriptions ------------------------------------------------------------
 # The description is how the model picks a tool, so its key rules are tested
 # like code: removing one by accident fails the build.
 
@@ -179,7 +179,7 @@ async def test_no_description_mentions_the_refund_limit():
         assert "500" not in description, name
 
 
-# --- Structured errors (2.2) --------------------------------------------------
+# --- Structured errors -------------------------------------------------------
 
 
 @pytest.mark.anyio

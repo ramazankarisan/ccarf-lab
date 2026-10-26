@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from ex3_extraction.schema import Category, Invoice, LineItem
+from ex2_extraction.schema import Category, Invoice, LineItem
 
 NULLABLE = (
     "vendor_tax_id",

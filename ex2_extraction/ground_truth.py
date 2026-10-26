@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ex3_extraction.schema import Invoice
+from ex2_extraction.schema import Invoice
 
 CORPUS_DIR = Path(__file__).parent / "corpus"
 GROUND_TRUTH_FILE = CORPUS_DIR / "ground_truth.json"

@@ -22,5 +22,5 @@ build/
 .vscode/
 .playwright-mcp/
 
-# Exercise 3 run results (model output, re-creatable)
+# Exercise 2 run results (model output, re-creatable)
 runs/

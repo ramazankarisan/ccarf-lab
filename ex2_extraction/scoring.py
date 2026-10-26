@@ -21,8 +21,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from ex3_extraction.extractor import ExtractionResult
-from ex3_extraction.schema import Invoice, LineItem
+from ex2_extraction.extractor import ExtractionResult
+from ex2_extraction.schema import Invoice, LineItem
 
 FIELDS = (
     "vendor_name",

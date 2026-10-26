@@ -12,8 +12,8 @@ from dataclasses import dataclass
 
 from anthropic.types import ToolParam
 
-from ex3_extraction.extractor import SYSTEM_PROMPT, record_invoice_tool
-from ex3_extraction.schema import json_schema
+from ex2_extraction.extractor import SYSTEM_PROMPT, record_invoice_tool
+from ex2_extraction.schema import json_schema
 
 
 @dataclass(frozen=True)

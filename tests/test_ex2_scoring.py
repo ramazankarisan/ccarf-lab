@@ -10,10 +10,10 @@ import pytest
 from anthropic import Anthropic
 from anthropic.types import Message
 
-from ex3_extraction.extractor import ExtractionResult, TokenUsage, run_corpus
-from ex3_extraction.ground_truth import load_ground_truth
-from ex3_extraction.schema import Category, LineItem
-from ex3_extraction.scoring import (
+from ex2_extraction.extractor import ExtractionResult, TokenUsage, run_corpus
+from ex2_extraction.ground_truth import load_ground_truth
+from ex2_extraction.schema import Category, LineItem
+from ex2_extraction.scoring import (
     FIELDS,
     DocScore,
     MismatchKind,

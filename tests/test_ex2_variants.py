@@ -8,11 +8,11 @@ from typing import Any, cast
 import pytest
 from pydantic import BaseModel
 
-from ex3_extraction.ground_truth import load_ground_truth
-from ex3_extraction.schema import Category, Invoice, LineItem, json_schema, strip_descriptions
-from ex3_extraction.variants import EXAMPLES, VARIANTS, A, B, C, Variant
+from ex2_extraction.ground_truth import load_ground_truth
+from ex2_extraction.schema import Category, Invoice, LineItem, json_schema, strip_descriptions
+from ex2_extraction.variants import EXAMPLES, VARIANTS, A, B, C, Variant
 
-STEP3_SCHEMA = json.loads(Path("tests/fixtures/ex3_step3_schema.json").read_text(encoding="utf-8"))
+STEP3_SCHEMA = json.loads(Path("tests/fixtures/ex2_step3_schema.json").read_text(encoding="utf-8"))
 
 
 def schema_of(variant: Variant) -> dict[str, Any]:
@@ -38,7 +38,7 @@ def descriptions(schema: Any) -> list[str]:
 
 
 def test_variant_a_is_exactly_the_step_3_schema_and_prompt():
-    from ex3_extraction.extractor import RECORD_INVOICE, SYSTEM_PROMPT
+    from ex2_extraction.extractor import RECORD_INVOICE, SYSTEM_PROMPT
 
     assert schema_of(A) == STEP3_SCHEMA
     assert A.tool == RECORD_INVOICE

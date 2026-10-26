@@ -11,9 +11,9 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
-from ex3_extraction.ground_truth import load_ground_truth
-from ex3_extraction.pipeline import RUNS_DIR, Outcome, Status, run_file, score_outcome
-from ex3_extraction.scoring import FIELDS, DocScore, field_accuracy
+from ex2_extraction.ground_truth import load_ground_truth
+from ex2_extraction.pipeline import RUNS_DIR, Outcome, Status, run_file, score_outcome
+from ex2_extraction.scoring import FIELDS, DocScore, field_accuracy
 
 
 def has_status(status: Status) -> Callable[[Outcome], bool]:

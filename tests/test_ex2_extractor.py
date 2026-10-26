@@ -8,7 +8,7 @@ import pytest
 from anthropic import Anthropic
 from anthropic.types import Message
 
-from ex3_extraction.extractor import (
+from ex2_extraction.extractor import (
     FORCE_RECORD_INVOICE,
     RECORD_INVOICE,
     SYSTEM_PROMPT,
@@ -19,7 +19,7 @@ from ex3_extraction.extractor import (
     parse_invoice,
     to_result,
 )
-from ex3_extraction.ground_truth import load_ground_truth
+from ex2_extraction.ground_truth import load_ground_truth
 
 
 def valid_input() -> dict[str, Any]:
@@ -30,7 +30,7 @@ def valid_input() -> dict[str, Any]:
 def test_the_tool_schema_is_the_step_3_schema():
     """Steps 2 and 3 used the schema without field descriptions; it stays that way.
     $defs and $ref stay in: the API accepts them (checked live with one call)."""
-    step3 = json.loads(Path("tests/fixtures/ex3_step3_schema.json").read_text(encoding="utf-8"))
+    step3 = json.loads(Path("tests/fixtures/ex2_step3_schema.json").read_text(encoding="utf-8"))
     schema = RECORD_INVOICE["input_schema"]
 
     assert schema == step3

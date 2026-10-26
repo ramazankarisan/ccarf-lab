@@ -15,11 +15,11 @@ from anthropic import Anthropic
 from anthropic.types import Message, MessageParam, ToolChoiceToolParam, ToolParam
 from pydantic import BaseModel, ValidationError
 
-from ex3_extraction.ground_truth import load_document, load_ground_truth
-from ex3_extraction.schema import Invoice, json_schema
+from ex2_extraction.ground_truth import load_document, load_ground_truth
+from ex2_extraction.schema import Invoice, json_schema
 
 TOOL_NAME = "record_invoice"
-BASELINE_FILE = Path("runs") / "baseline.json"  # runs/ is gitignored
+BASELINE_FILE = Path("runs") / "baseline.json"
 MAX_TOKENS = 4096  # one invoice needs about 500 output tokens
 
 # Zero-shot on purpose: this is the baseline, and Step 4 measures what examples add.
@@ -142,7 +142,7 @@ def run_corpus(client: Anthropic, model: str, out_file: Path, runs: int = 3) -> 
     """Extract every corpus document `runs` times, score, save everything, return the
     report. One run of 12 documents is noisy: the same prompt fails different documents
     from run to run, so a comparison needs several runs."""
-    from ex3_extraction import scoring  # here, not at the top: scoring imports this module
+    from ex2_extraction import scoring  # here, not at the top: scoring imports this module
 
     truth = load_ground_truth()
     record: dict[str, Any] = {"model": model, "runs": []}

@@ -8,7 +8,7 @@ import pytest
 from anthropic import Anthropic
 from anthropic.types.messages import MessageBatch, MessageBatchIndividualResponse
 
-from ex3_extraction.batch import (
+from ex2_extraction.batch import (
     BROKEN_DOC,
     BROKEN_TOOL_CHOICE,
     DOCS,
@@ -18,9 +18,9 @@ from ex3_extraction.batch import (
     run,
     wait,
 )
-from ex3_extraction.extractor import FORCE_RECORD_INVOICE, TOOL_NAME
-from ex3_extraction.ground_truth import load_ground_truth
-from ex3_extraction.variants import B
+from ex2_extraction.extractor import FORCE_RECORD_INVOICE, TOOL_NAME
+from ex2_extraction.ground_truth import load_ground_truth
+from ex2_extraction.variants import B
 
 TRUTH = load_ground_truth()
 NULL_ITEM = {"description": "Taxi ride", "quantity": "null", "unit_price": "null", "amount": 23.4}

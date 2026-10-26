@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 mcp = MCPServer("support-backend")
 
 
-# --- Structured errors (2.2) ----------------------------------------------------
+# --- Structured errors ---------------------------------------------------------
 # description is written for the agent (what happened, what to do next);
 # customerMessage is written for the end customer, or null when the agent
 # should not pass anything on.

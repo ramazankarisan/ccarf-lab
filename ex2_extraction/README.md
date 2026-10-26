@@ -1,7 +1,55 @@
-# Exercise 3: structured extraction
+# Exercise 2: structured extraction
 
-An invoice extraction pipeline. Step 1 defines what a correct extraction is before
-any model call: a schema, a corpus of hand-written invoices and their ground truth.
+An invoice extraction pipeline on the Claude API. Claude reads an invoice and fills a
+typed record through a forced tool call; code validates the record, checks that its
+numbers agree, retries only what a retry can fix, and hands the rest to a human. Every
+change to the prompt or schema is measured against hand-written ground truth.
+
+## Results
+
+12 fictional invoices, each built around one edge case, 12 fields each, 3 runs per
+configuration (432 field checks). Model: Claude Haiku 5.5.
+
+| Configuration | Correct fields | Input tokens per document |
+|---|---|---|
+| Zero-shot baseline (Step 2) | 421 / 432 | — |
+| + money schema, semantic checks, retries (Step 3, variant A) | 426 / 432 | 2,205 |
+| + field descriptions (variant B) | **432 / 432** | 3,046 |
+| + three few-shot examples (variant C) | 431 / 432 | 3,522 |
+| Variant B through the Batches API, at half price (Step 5) | 132 / 132 | — |
+
+- Errors that repeated in 3 of 3 runs were treated as systematic and fixed at the
+  source; one-off misses were treated as noise.
+- Field descriptions fixed the remaining systematic error (catering filed as
+  `services`, 3 of 3 runs → 0 of 3). Few-shot examples added no accuracy on top and cost
+  about 480 more input tokens on every call, so variant B is the one kept.
+- inv_07, whose line items really don't add up to its printed total, ends as a
+  `conflict` for a human in every run, with the printed total kept, not "corrected".
+
+## How it works
+
+```mermaid
+flowchart LR
+    D[invoice text] --> M[Claude<br/>forced record_invoice tool]
+    M --> V{valid?<br/>Pydantic}
+    V -- no --> R1[send the errors back<br/>max 2 retries] --> M
+    V -- yes --> C{numbers agree?<br/>validation.py}
+    C -- yes --> OK([ok])
+    C -- no, first time --> R2[re-check: copy as printed,<br/>don't make values agree] --> M
+    C -- still no --> H([conflict → human])
+    R1 -. still invalid .-> F([failed → human])
+```
+
+Three different questions, answered in three places:
+
+| Question | Answered by | Needs ground truth? |
+|---|---|---|
+| Is the output well-formed? | `schema.py` (Pydantic, `extra="forbid"`, cross-field rules) | no |
+| Do its numbers agree? | `validation.py` (item arithmetic, items vs subtotal, subtotal + tax = total) | no |
+| Is it what the document says? | `scoring.py` (per field: fabrication, omission, wrong) | yes, evaluation only |
+
+The first two run in production. The third is how changes are measured: the catering
+error passed both production checks and only the evaluation caught it.
 
 ## The steps
 
@@ -24,7 +72,6 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | Unknown keys are rejected | A typo like `vendor_taxid` would otherwise look like a missing tax ID. |
 | Ground truth records what the document says | For an invoice whose items don't add up, the expected total is the printed one. Spotting the gap is code's job. |
 | Corpus files have neutral names (`inv_01.txt`) | A name like `no_tax_id.txt` would leak the answer if it ever reached a prompt. The edge cases live in `ground_truth.json`. |
-
 | The schema is the tool's `input_schema`, and the named tool is forced | One schema, and every document must produce an extraction. The API accepts Pydantic's `$defs`/`$ref`. Forced tool choice works on Haiku 5.5; Opus 5.5 and Sonnet 5.5 reject it, so there it would be `auto` with `strict: true`. |
 | Tool input is validated again with Pydantic | The tool forces the shape, not the meaning: JSON Schema can't express "a detail only for `other`". |
 | Mismatches are classed as fabrication, omission or wrong | Each points to a different fix. A fabricated tax ID is worse than a missed one. |
@@ -32,20 +79,25 @@ any model call: a schema, a corpus of hand-written invoices and their ground tru
 | Invalid input is retried, inconsistent numbers are re-checked once, absent values never | A retry fixes a misread. It can't add information the document lacks, or fix a document that doesn't add up. |
 | The re-check tells the model not to make values agree | Otherwise it "repairs" inv_07's printed total to the sum of its items: a fabrication that passes validation. A document that still disagrees ends as a conflict for a human. |
 | Fields that change on the re-check are recorded (`changed_on_recheck`) | Code can't tell a fixed misread (1400 → 1440) from a fabricated fix (1203 → 1163): both make the numbers agree. Provenance lets a human audit it. |
-| Descriptions and few-shot examples are separate variants (A → B → C) | One change at a time, or the effect can't be attributed. Field descriptions (B) fixed the catering error in 3 of 3 runs; examples (C) added nothing measurable on this corpus and cost about 480 more input tokens per document. |
+| Descriptions and few-shot examples are separate variants (A → B → C) | One change at a time, or the effect can't be attributed. |
 | Prompts, descriptions and examples share nothing with the corpus | A test checks every model-facing text for corpus vendors, numbers, products and tax IDs, and for "catering". Otherwise the score measures memory, not extraction. |
+| Free text is scored by what downstream needs | Identifiers, dates, codes and numbers are exact. Vendor names ignore case, item descriptions aren't scored, and `category_detail` counts presence. Otherwise copying `KESTREL NETWORKS CORP.` as printed would score as an error, and real changes would hide in the noise. |
 | Batch results are matched by `custom_id`, never by position | Results come back in any order. The custom_id is the document name without `.txt`, because the API allows only letters, digits, `_` and `-`. |
 | Batch retries are a second batch, not a loop | A batch request gets one answer. Errored requests are fixed and sent fresh; invalid and inconsistent extractions go back with the Step 3 feedback (document, failed output, specific errors). |
-| Free text is scored by what downstream needs | Identifiers, dates, codes and numbers are exact. Vendor names ignore case, item descriptions aren't scored, and `category_detail` counts presence. Otherwise copying `KESTREL NETWORKS CORP.` as printed would score as an error, and real changes would hide in the noise. |
 
 ## Run it
 
+Set up the repo first (see the [main README](../README.md#quickstart)). These commands
+call the real API; one full run costs a few cents with Haiku.
+
 ```bash
-uv run python -m ex3_extraction.extractor   # 3 runs x 12 documents, about 1.5 cents with Haiku; saves runs/baseline.json
-uv run python -m ex3_extraction.pipeline --variant B   # 3 runs x 12 documents with checks and retries; saves runs/B_1..3.json
-uv run python -m ex3_extraction.compare A B C          # the variants side by side, re-scored from runs/
-uv run python -m ex3_extraction.batch                  # 11 requests (one broken on purpose) as a batch, then a second batch
+uv run python -m ex2_extraction.extractor              # zero-shot baseline: 3 runs x 12 documents, saves runs/baseline.json
+uv run python -m ex2_extraction.pipeline --variant B   # with checks and retries: saves runs/B_1..3.json
+uv run python -m ex2_extraction.compare A B C          # the variants side by side, re-scored from runs/
+uv run python -m ex2_extraction.batch                  # 11 requests (one broken on purpose) as a batch, then a second batch
 ```
+
+The tests (`tests/test_ex2_*.py`) run offline against scripted fake responses.
 
 ## The corpus
 

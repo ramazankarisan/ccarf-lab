@@ -4,14 +4,14 @@ import re
 
 import pytest
 
-from ex3_extraction.ground_truth import (
+from ex2_extraction.ground_truth import (
     CORPUS_DIR,
     EDGE_CASES,
     GroundTruth,
     load_document,
     load_ground_truth,
 )
-from ex3_extraction.validation import check
+from ex2_extraction.validation import check
 
 TRUTH = load_ground_truth()
 DOCS = sorted(TRUTH)

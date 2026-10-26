@@ -30,7 +30,7 @@ from anthropic import Anthropic
 from anthropic.types import Message, MessageParam, ToolUseBlock
 from pydantic import BaseModel
 
-from ex3_extraction.extractor import (
+from ex2_extraction.extractor import (
     TOOL_NAME,
     ExtractionResult,
     TokenUsage,
@@ -38,11 +38,11 @@ from ex3_extraction.extractor import (
     document_message,
     parse_invoice,
 )
-from ex3_extraction.ground_truth import load_document, load_ground_truth
-from ex3_extraction.schema import Invoice
-from ex3_extraction.scoring import DocScore, score_document
-from ex3_extraction.validation import Issue, check
-from ex3_extraction.variants import VARIANTS, A, Variant
+from ex2_extraction.ground_truth import load_document, load_ground_truth
+from ex2_extraction.schema import Invoice
+from ex2_extraction.scoring import DocScore, score_document
+from ex2_extraction.validation import Issue, check
+from ex2_extraction.variants import VARIANTS, A, Variant
 
 MAX_INVALID_RETRIES = 2  # after the first call: at most 3 calls for an invalid input
 

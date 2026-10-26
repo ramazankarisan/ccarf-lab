@@ -8,17 +8,17 @@ import pytest
 from anthropic import Anthropic
 from anthropic.types import Message
 
-from ex3_extraction.extractor import TOOL_NAME, ExtractionResult
-from ex3_extraction.ground_truth import load_ground_truth
-from ex3_extraction.pipeline import (
+from ex2_extraction.extractor import TOOL_NAME, ExtractionResult
+from ex2_extraction.ground_truth import load_ground_truth
+from ex2_extraction.pipeline import (
     MAX_INVALID_RETRIES,
     Status,
     extract_with_retries,
     run_pipeline,
 )
-from ex3_extraction.scoring import MismatchKind, score_document
-from ex3_extraction.validation import IssueCode
-from ex3_extraction.variants import VARIANTS
+from ex2_extraction.scoring import MismatchKind, score_document
+from ex2_extraction.validation import IssueCode
+from ex2_extraction.variants import VARIANTS
 
 TRUTH = load_ground_truth()
 

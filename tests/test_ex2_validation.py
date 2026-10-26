@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from ex3_extraction.ground_truth import load_ground_truth
-from ex3_extraction.schema import Invoice, LineItem
-from ex3_extraction.validation import Issue, IssueCode, cents, check
+from ex2_extraction.ground_truth import load_ground_truth
+from ex2_extraction.schema import Invoice, LineItem
+from ex2_extraction.validation import Issue, IssueCode, cents, check
 
 TRUTH = load_ground_truth()
 

@@ -95,7 +95,7 @@ class Invoice(BaseModel):
         description="The seller's tax ID only, without its label (EIN, VAT No, USt-IdNr., "
         "Steuernummer). Never the buyer's or customer's. Null if the seller's is not printed."
     )
-    due_date: date | None = Field(  # required but nullable
+    due_date: date | None = Field(
         description="The payment due date as YYYY-MM-DD, only if one is printed. A date "
         "the invoice was paid or settled is not a due date. Null if none is printed."
     )
