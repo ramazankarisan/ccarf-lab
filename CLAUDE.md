@@ -7,8 +7,11 @@ package with its own README:
   tools → agent loop → Agent SDK hooks → escalation, case facts and multi-turn sessions.
 - `ex2_extraction/`: an invoice extraction pipeline: schema and ground truth →
   extraction tool → validation retries → descriptions vs few-shot → Batches API.
+- `ex4_research/`: a multi-agent research pipeline over a local fake corpus:
+  coordinator and subagents → parallel execution → error propagation → conflicting
+  sources.
 
-Tests for Exercise 2 are named `tests/test_ex2_*.py`.
+Tests for Exercise 2 are named `tests/test_ex2_*.py`, for Exercise 4 `tests/test_ex4_*.py`.
 
 ## Commands
 
@@ -19,10 +22,11 @@ Tests for Exercise 2 are named `tests/test_ex2_*.py`.
 - Tests: `uv run pytest --cov` (must stay at or above 90% coverage)
 - Live scenarios (cost money, only on request): `uv run pytest -m live`. Assert on tool
   calls, arguments and case facts, never on wording; each scenario must pass 3 of 3.
-- Types: `uv run mypy ex1_support_agent ex2_extraction tests`
+- Types: `uv run mypy ex1_support_agent ex2_extraction ex4_research tests`
 - Smoke test against the real API: `uv run python -m ex1_support_agent.hello`
 - Live runs (cost money, never in tests): `uv run python -m ex1_support_agent.loop "…"`,
-  `… .agent "…"`, and the interactive `uv run python -m ex1_support_agent.session`
+  `… .agent "…"`, the interactive `uv run python -m ex1_support_agent.session`, and
+  `uv run python -m ex4_research.agent "…"`
 
 Run all checks before saying a change is done.
 

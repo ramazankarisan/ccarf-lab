@@ -14,6 +14,7 @@ Each exercise adds one idea at a time, and each idea is pinned down by tests.
 |---|---|---|
 | [1. Customer-support agent](ex1_support_agent/README.md) | An agent on the Claude API and the Agent SDK: MCP tools, structured errors, hooks that enforce business rules, escalation, case facts, a web app | done |
 | [2. Structured extraction](ex2_extraction/README.md) | An invoice extraction pipeline: a Pydantic schema as a forced tool, semantic checks with targeted retries, an evaluation against ground truth, prompt variants measured one change at a time, the Batches API | done |
+| [4. Multi-agent research](ex4_research/README.md) | A coordinator on the Agent SDK that delegates to two subagents with one tool each, over a local fake corpus, and gets structured findings back | in progress |
 
 ## Highlights
 
@@ -50,7 +51,7 @@ Then follow the README of the exercise you want to run.
 
 ```bash
 uv run pytest --cov                 # offline, 100% line and branch coverage
-uv run mypy ex1_support_agent ex2_extraction tests  # strict type checking
+uv run mypy ex1_support_agent ex2_extraction ex4_research tests  # strict type checking
 npm --prefix web test               # React tests (Vitest + Testing Library)
 uv run pytest -m live               # live scenarios against the real API (cost money)
 npx --prefix web lefthook run pre-commit --all-files
@@ -69,7 +70,8 @@ npx --prefix web lefthook run pre-commit --all-files
 ```text
 ex1_support_agent/   Exercise 1: support agent (own README)
 ex2_extraction/      Exercise 2: invoice extraction (own README)
-tests/               one test module per source module (test_ex2_* for Exercise 2)
+ex4_research/        Exercise 4: multi-agent research (own README)
+tests/               one test module per source module (test_ex2_* / test_ex4_* per exercise)
 tests/live/          live scenario tests (marker: live, skipped by default)
 web/                 React + TypeScript app for Exercise 1
 docs/                screenshots
