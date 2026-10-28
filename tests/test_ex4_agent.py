@@ -7,6 +7,7 @@ from mcp import Client
 
 from ex4_research.agent import (
     COORDINATOR_MAX_TURNS,
+    FIXED_FORMAT,
     LOAD_DOCUMENT,
     MODE_RULES,
     MODES,
@@ -23,11 +24,13 @@ from ex4_research.agent import (
     tool_decision,
 )
 from ex4_research.completeness import FindingsLedger
-from ex4_research.findings import RESULT_FORMAT, Finding
+from ex4_research.findings import RESULT_FORMAT, Finding, valid_findings
 from ex4_research.server import mcp
-from ex4_research.timeline import SPAWN_TOOL, SYNTHESIZER
+from ex4_research.timeline import REPORT_SECTIONS, SPAWN_TOOL, SYNTHESIZER
+from ex4_research.validation import HandbackLog
 from tests.test_ex4_completeness import post_spawn, pre_spawn
 from tests.test_ex4_findings import DOC_FINDING
+from tests.test_ex4_validation import stop
 
 # Offline only: these build options and prompts, never start an agent.
 
@@ -120,28 +123,28 @@ def test_coordinator_runs_the_owner_check_and_the_foreground_rule():
     assert owner.hooks == [allow_owner_only]
     assert spawn.matcher == SPAWN_MATCHER == "Agent|Task"
     assert spawn.hooks[0] is keep_in_foreground
-    assert len(spawn.hooks) == 2  # then the synthesizer completeness guard
+    assert len(spawn.hooks) == 2  # then the findings attacher
 
 
 @pytest.mark.anyio
-async def test_findings_recorded_after_a_spawn_are_required_from_the_synthesizer():
-    """The recorder and the guard share the ledger passed to build_options."""
+async def test_findings_recorded_after_a_spawn_are_attached_for_the_synthesizer():
+    """The recorder and the attacher share the ledger passed to build_options."""
     ledger = FindingsLedger()
     hooks = build_options(model="m", ledger=ledger).hooks
     assert hooks is not None
     [recorder_matcher] = hooks["PostToolUse"]
     assert recorder_matcher.matcher == SPAWN_MATCHER
     [record] = recorder_matcher.hooks
-    guard = hooks["PreToolUse"][1].hooks[1]
+    attach = hooks["PreToolUse"][1].hooks[1]
     finding = Finding.model_validate(DOC_FINDING)
     envelope = json.dumps({"status": "complete", "findings": [DOC_FINDING]})
     await record(post_spawn("doc_analyst", envelope), "t", {"signal": None})
     assert ledger.received == [finding]
-    output = await guard(pre_spawn(SYNTHESIZER, "No findings here."), "t", {"signal": None})
-    assert output["hookSpecificOutput"]["permissionDecision"] == "deny"  # type: ignore[typeddict-item]
+    output: Any = await attach(pre_spawn(SYNTHESIZER, "No findings here."), "t", {"signal": None})
+    assert valid_findings(output["hookSpecificOutput"]["updatedInput"]["prompt"]) == [finding]
 
 
-def test_build_options_without_a_ledger_still_has_the_guard():
+def test_build_options_without_a_ledger_still_attaches():
     assert len(build_options(model="m").hooks["PreToolUse"][1].hooks) == 2  # type: ignore[index]
 
 
@@ -237,17 +240,23 @@ def test_build_options_uses_the_modes_prompt():
         assert build_options(model="m", mode=mode).system_prompt == coordinator_prompt(mode)
 
 
-def test_coordinator_asks_for_facts_not_for_a_format():
-    """A live run's coordinator dictated its own fields; the findings then failed the schema."""
-    assert "Ask subagents for facts, not for a format" in coordinator_prompt("parallel")
-    assert "This format is fixed." in RESULT_FORMAT
+def test_the_format_rule_lives_in_the_subagent_definitions():
+    """Live coordinators dictated their own fields; the rule now sits with each subagent."""
+    agents = build_agents()
+    for name in ("web_researcher", "doc_analyst"):
+        assert agents[name].description.endswith(FIXED_FORMAT)
+        assert "This format is fixed." in agents[name].prompt
+    assert "Established, Contested, Coverage" in agents[SYNTHESIZER].description
+    assert "format" not in coordinator_prompt("parallel").lower()
 
 
-def test_findings_reach_the_synthesizer_only_through_the_coordinator():
-    """Hub and spoke: the coordinator passes every finding on as JSON, unedited."""
+def test_findings_reach_the_synthesizer_through_code_not_the_coordinator():
+    """Hub and spoke: no subagent talks to another; code attaches the findings."""
     prompt = coordinator_prompt("parallel")
     assert "Subagents never talk to each" in prompt
-    assert "merged into one JSON\n  array exactly as the subagents returned them" in prompt
+    assert "Code attaches\n  every finding the researchers returned to its prompt" in prompt
+    assert "do not copy findings" in prompt
+    assert "Code attaches every finding" in build_agents()[SYNTHESIZER].description
 
 
 def test_synthesizer_must_cite_every_claim_and_add_nothing():
@@ -274,7 +283,7 @@ def test_coordinator_continues_with_partial_results_and_says_what_failed():
 
 
 def test_synthesizer_ends_with_a_coverage_section():
-    assert 'End with a section "## Coverage"' in SYNTHESIZER_PROMPT
+    assert '"## Coverage" last' in SYNTHESIZER_PROMPT
     assert '"Gaps": what is missing or weak, each with its cause' in SYNTHESIZER_PROMPT
 
 
@@ -309,3 +318,52 @@ def test_cli_fail_cases_are_valid_plans():
         "category_timeout",
         "empty_once",
     }
+
+
+# --- Step 4: hand-back validation, established vs contested -------------------------
+
+
+def test_report_has_established_then_contested_then_coverage():
+    sections = [SYNTHESIZER_PROMPT.index(f'"## {name}"') for name in REPORT_SECTIONS]
+    assert sections == sorted(sections)
+
+
+def test_established_needs_two_independent_sources_or_a_primary_report():
+    assert "supported by at least two independent sources, or by a\n  primary report" in (
+        SYNTHESIZER_PROMPT
+    )
+    assert "A press page and the report it summarizes are one source." in SYNTHESIZER_PROMPT
+
+
+def test_contested_figures_stand_side_by_side_and_are_never_resolved():
+    assert "side by side" in SYNTHESIZER_PROMPT
+    assert "each figure with its source, date and\n  scope, then the likely reason" in (
+        SYNTHESIZER_PROMPT
+    )
+    assert "Never\n  average them, never pick one, never drop one." in SYNTHESIZER_PROMPT
+
+
+@pytest.mark.anyio
+async def test_the_handback_validator_runs_when_any_subagent_stops():
+    log = HandbackLog()
+    hooks = build_options(model="m", handbacks=log).hooks
+    assert hooks is not None
+    [matcher] = hooks["SubagentStop"]
+    assert matcher.matcher is None  # every subagent; the hook skips non-researchers
+    [validate] = matcher.hooks
+    output: Any = await validate(stop("web_researcher", "not json"), None, {"signal": None})
+    assert output["decision"] == "block"
+    assert len(log.corrections) == 1
+
+
+def test_build_options_without_a_handback_log_still_validates():
+    hooks = build_options(model="m").hooks
+    assert hooks is not None
+    assert len(hooks["SubagentStop"][0].hooks) == 1
+
+
+@pytest.mark.anyio
+async def test_the_foreground_rule_leaves_the_synthesizer_to_the_attacher():
+    """Only one hook may return updatedInput for a call; attach_findings owns this one."""
+    tool_input = {"subagent_type": SYNTHESIZER, "prompt": "p", "run_in_background": True}
+    assert await keep_in_foreground(spawn_input(tool_input), "t", {"signal": None}) == {}

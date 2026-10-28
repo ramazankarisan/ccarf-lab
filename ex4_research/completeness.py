@@ -1,15 +1,18 @@
-"""Hooks that make the hand-off to the synthesizer complete, not just requested.
+"""Hooks that make the hand-off to the synthesizer complete by construction.
 
-The coordinator's prompt asks it to pass every finding to the synthesizer
-unchanged; a live run passed them as separate arrays, and nothing stopped it from
-dropping or editing some. These hooks check instead:
+Step 2 asked the coordinator to copy every finding into the synthesizer's prompt
+and denied a prompt that missed one. Live runs showed a model cannot copy 50
+findings exactly: one excerpt always changed, and every synthesizer spawn was
+denied. So code passes the data instead of the model:
 
 - PostToolUse on the spawn tool records every finding a researcher hands back.
-- PreToolUse on the spawn tool denies a synthesizer spawn whose prompt is missing
-  any of them, and says which, so the coordinator can retry with all of them.
+- PreToolUse on the spawn tool rewrites a synthesizer spawn's prompt: the
+  coordinator's text (question, emphasis, process notes) plus every recorded
+  finding as JSON, attached by code.
 """
 
 import contextlib
+import json
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -22,14 +25,12 @@ from ex4_research.findings import (
     NoSources,
     findings_of,
     parse_research_result,
-    valid_findings,
 )
 from ex4_research.timeline import EXPECTED_SOURCE_TYPE, SYNTHESIZER
 
 logger = logging.getLogger(__name__)
 
 RESEARCHERS = frozenset(EXPECTED_SOURCE_TYPE)
-MAX_LISTED = 8  # missing findings named in a denial; the rest are counted
 
 
 def response_text(value: object) -> str:
@@ -47,16 +48,21 @@ AnyFinding = Finding | NoSources
 
 
 def finding_key(finding: AnyFinding) -> str:
-    """Identity of a finding: all of its fields, so an edited finding counts as missing."""
+    """Identity of a finding: all of its fields, so a repeat is recorded once."""
     return finding.model_dump_json()
+
+
+FINDINGS_HEADER = (
+    "Findings, attached by code: every finding the researchers handed back, complete and unchanged."
+)
 
 
 @dataclass
 class FindingsLedger:
-    """Every finding researchers handed back in one run, and every denial issued."""
+    """Every finding researchers handed back in one run, and how many each synthesis got."""
 
     received: list[AnyFinding] = field(default_factory=list)
-    denials: list[str] = field(default_factory=list)
+    attached: list[int] = field(default_factory=list)  # findings attached per synthesizer spawn
 
     def record(self, findings: Iterable[AnyFinding]) -> None:
         known = {finding_key(f) for f in self.received}
@@ -65,64 +71,48 @@ class FindingsLedger:
                 known.add(finding_key(finding))
                 self.received.append(finding)
 
-    def missing_from(self, prompt: str) -> list[AnyFinding]:
-        """The recorded findings that the prompt does not contain unchanged."""
-        given = {finding_key(f) for f in valid_findings(prompt)}
-        return [f for f in self.received if finding_key(f) not in given]
-
-
-def label(finding: AnyFinding) -> str:
-    source = finding.source_id if isinstance(finding, Finding) else f"search: {finding.query}"
-    return f"[{source}] {finding.claim[:80].rstrip('.')}"
-
-
-def denial_reason(missing: list[AnyFinding], total: int, read: int = 0) -> str:
-    """read: how many valid findings the prompt did contain, so the coordinator can
-    tell a dropped finding (read is high) from JSON it could not parse (read is 0)."""
-    listed = [label(f) for f in missing[:MAX_LISTED]]
-    more = len(missing) - len(listed)
-    return (
-        f"Synthesizer prompt is missing {len(missing)} of the {total} findings the "
-        f"researchers returned (it contains {read} valid findings). Spawn it again with "
-        "every finding as JSON, unchanged; any nesting works. Missing: "
-        + "; ".join(listed)
-        + (f"; and {more} more." if more else ".")
-    )
+    def attach_to(self, prompt: str) -> str:
+        """The coordinator's prompt with every recorded finding appended as JSON."""
+        data = json.dumps([f.model_dump(mode="json") for f in self.received], indent=1)
+        return f"{prompt.rstrip()}\n\n{FINDINGS_HEADER}\n{data}"
 
 
 def make_completeness_hooks(ledger: FindingsLedger) -> tuple[HookCallback, HookCallback]:
-    """(PostToolUse recorder, PreToolUse guard) for the spawn tool, sharing one ledger."""
+    """(PostToolUse recorder, PreToolUse attacher) for the spawn tool, sharing one ledger."""
 
     async def record_findings(
         input_data: HookInput, tool_use_id: str | None, context: HookContext
     ) -> HookJSONOutput:
         tool_input: Any = input_data.get("tool_input") or {}
         if isinstance(tool_input, dict) and tool_input.get("subagent_type") in RESEARCHERS:
-            # An invalid hand-back adds nothing to require; the timeline reports it.
+            # An invalid hand-back adds nothing; the timeline reports it.
             with contextlib.suppress(ValueError):
                 result = parse_research_result(response_text(input_data.get("tool_response")))
                 ledger.record(findings_of(result))
         return {}
 
-    async def require_all_findings(
+    async def attach_findings(
         input_data: HookInput, tool_use_id: str | None, context: HookContext
     ) -> HookJSONOutput:
         tool_input: Any = input_data.get("tool_input") or {}
         if not isinstance(tool_input, dict) or tool_input.get("subagent_type") != SYNTHESIZER:
             return {}
-        prompt = str(tool_input.get("prompt", ""))
-        missing = ledger.missing_from(prompt)
-        if not missing:
-            return {}
-        reason = denial_reason(missing, len(ledger.received), len(valid_findings(prompt)))
-        ledger.denials.append(reason)
-        logger.warning("Denied synthesizer spawn: %s", reason)
+        ledger.attached.append(len(ledger.received))
+        logger.info("Attached %d findings to the synthesizer prompt", len(ledger.received))
+        updated = {
+            **tool_input,
+            "prompt": ledger.attach_to(str(tool_input.get("prompt", ""))),
+            # This hook owns the synthesizer's input, so it applies the foreground
+            # rule too: two hooks returning updatedInput for one call would compete.
+            "run_in_background": False,
+        }
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": reason,
+                "permissionDecision": "allow",
+                "permissionDecisionReason": "Findings attached by code.",
+                "updatedInput": updated,
             }
         }
 
-    return record_findings, require_all_findings
+    return record_findings, attach_findings

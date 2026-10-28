@@ -9,7 +9,7 @@ import statistics
 import time
 from collections.abc import AsyncIterable, Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -31,6 +31,9 @@ from ex4_research.findings import (
     parse_findings,
     parse_research_result,
 )
+
+if TYPE_CHECKING:  # validation.py imports this module; import it for types only
+    from ex4_research.validation import Correction
 
 # The subagent-spawning tool. The exam (and older SDKs) call it "Task"; in
 # claude-agent-sdk 0.2.172 (bundled CLI 2.1.308) it is "Agent". The CLI still
@@ -88,8 +91,10 @@ class ResearchRun:
     spawns: list[Spawn] = field(default_factory=list)
     result: ResultMessage | None = None
     finished_at: float | None = None  # when the ResultMessage arrived: the wall-clock time
-    denials: list[str] = field(default_factory=list)  # from the completeness hook
+    attached: list[int] = field(default_factory=list)  # findings code attached per synthesis
     notes: list[tuple[float, str]] = field(default_factory=list)  # the coordinator's own text
+    # From the SubagentStop hook: every hand-back it sent back, and how the retry went.
+    corrections: list["Correction"] = field(default_factory=list)
 
 
 def spawn_from(block: ToolUseBlock, response: int, at: float) -> Spawn:
@@ -297,12 +302,18 @@ def format_synthesis(run: ResearchRun, *, texts: bool = True) -> str:
         lines.append("=== No synthesizer was spawned.")
         given = researched_findings(run)
     else:
-        try:
-            given = parse_findings(synth.prompt)
-            contents = f"contains {len(given)} valid findings as JSON"
-        except ValueError as error:
+        if run.attached:
+            # The trace holds the coordinator's text from before the hook attached
+            # the findings, so the findings are the ones the researchers handed back.
             given = researched_findings(run)
-            contents = f"its findings JSON is {' '.join(str(error).split())[:200]}"
+            contents = f"the coordinator's text; code attached {run.attached[-1]} findings"
+        else:
+            try:
+                given = parse_findings(synth.prompt)
+                contents = f"contains {len(given)} valid findings as JSON"
+            except ValueError as error:
+                given = researched_findings(run)
+                contents = f"its findings JSON is {' '.join(str(error).split())[:200]}"
         shown = synth.prompt[:SYNTHESIZER_PROMPT_PREVIEW]
         more = " ..." if len(synth.prompt) > SYNTHESIZER_PROMPT_PREVIEW else ""
         lines.append(f"=== Synthesizer's prompt ({len(synth.prompt)} chars; {contents}):")
@@ -333,18 +344,23 @@ def format_synthesis(run: ResearchRun, *, texts: bool = True) -> str:
 
 # --- Failures and coverage (Step 3) --------------------------------------------------
 
-COVERAGE_HEADING = re.compile(r"^#{1,6}\s*Coverage\b.*$", re.MULTILINE | re.IGNORECASE)
+REPORT_SECTIONS = ("Established", "Contested", "Coverage")
 
 
-def coverage_section(report: str) -> str | None:
-    """The report's Coverage section: its heading up to the next heading of that level."""
-    match = COVERAGE_HEADING.search(report)
+def report_section(report: str, name: str) -> str | None:
+    """A report section: its heading up to the next heading of that level or higher."""
+    heading = re.compile(rf"^#{{1,6}}\s*{re.escape(name)}\b.*$", re.MULTILINE | re.IGNORECASE)
+    match = heading.search(report)
     if match is None:
         return None
     level = len(match.group(0)) - len(match.group(0).lstrip("#"))
     rest = report[match.end() :]
     following = re.search(rf"^#{{1,{level}}}\s", rest, re.MULTILINE)
     return (match.group(0) + (rest[: following.start()] if following else rest)).strip()
+
+
+def coverage_section(report: str) -> str | None:
+    return report_section(report, "Coverage")
 
 
 def run_issues(run: ResearchRun) -> list[str]:
@@ -368,8 +384,9 @@ def run_issues(run: ResearchRun) -> list[str]:
     if synthesizer_spawn(run) is None:
         issues.append("no synthesizer report")
     issues += [
-        f"completeness hook denied a synthesizer spawn ({n})"
-        for n in range(1, len(run.denials) + 1)
+        f"{c.agent_type}: hand-back {c.outcome} after one correction"
+        for c in run.corrections
+        if c.outcome != "passed"
     ]
     return issues
 
@@ -420,22 +437,59 @@ def format_degradation(run: ResearchRun) -> str:
     return "\n".join(lines)
 
 
-def format_denials(run: ResearchRun) -> str:
-    if not run.denials:
-        return "=== Hook denials: none"
-    return "\n".join(["=== Hook denials:", *(f"  - {reason}" for reason in run.denials)])
+def format_corrections(run: ResearchRun) -> str:
+    """Every hand-back the SubagentStop hook sent back: the errors, and the second try."""
+    if not run.corrections:
+        return "=== Hand-back corrections (SubagentStop): none"
+    lines = ["=== Hand-back corrections (SubagentStop):"]
+    for c in run.corrections:
+        lines.append(f"--- {c.agent_type} ({c.agent_id}): blocked, {len(c.errors)} error(s) sent:")
+        lines += [f"    - {one_line(error, 200)}" for error in c.errors]
+        if c.outcome == "passed":
+            lines.append("  second hand-back: passed")
+        elif c.outcome == "format_failed":
+            lines.append(f"  second hand-back: format_failed ({len(c.final_errors)} error(s)):")
+            lines += [f"    - {one_line(error, 200)}" for error in c.final_errors]
+        else:
+            lines.append("  second hand-back: none arrived")
+    return "\n".join(lines)
+
+
+def format_report_structure(run: ResearchRun, *, texts: bool = True) -> str:
+    """Which required sections the final answer has, then (texts=True) each of them."""
+    report = (run.result.result if run.result else None) or ""
+    present = {name: report_section(report, name) is not None for name in REPORT_SECTIONS}
+    lines = [
+        "=== Report sections: "
+        + ", ".join(f"{name} {'yes' if ok else 'MISSING'}" for name, ok in present.items())
+    ]
+    if texts:
+        for name in REPORT_SECTIONS:
+            section = report_section(report, name)
+            if section:
+                lines += ["", section]
+    return "\n".join(lines)
+
+
+def format_attachments(run: ResearchRun) -> str:
+    if not run.attached:
+        return "=== Findings attached by code to the synthesizer: none (no synthesis)"
+    counts = ", ".join(str(n) for n in run.attached)
+    return f"=== Findings attached by code to the synthesizer: {counts}"
 
 
 def format_run(
     run: ResearchRun, *, verbose: bool = False, texts: bool = True, failures: bool = False
 ) -> str:
     """failures=True (Step 3) adds tool errors, hand-backs, degradation and coverage."""
-    parts = [format_timeline(run), format_denials(run)]
+    parts = [format_timeline(run), format_attachments(run), format_corrections(run)]
     if failures:
         parts.append(format_failures(run))
     if verbose:
         parts.append(format_spawn_details(run))
     parts.append(format_synthesis(run, texts=texts))
+    # The sections are printed here only when the full report was not.
+    parts.append(format_report_structure(run, texts=not texts))
     if failures:
         parts.append(format_degradation(run))
     return "\n\n".join(parts)

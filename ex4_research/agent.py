@@ -12,10 +12,12 @@ Run against the real API (both modes, one after the other):
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
 from collections.abc import AsyncIterable, Mapping
+from dataclasses import asdict
 from pathlib import Path
 from typing import Literal, get_args
 
@@ -48,6 +50,7 @@ from ex4_research.timeline import (
     format_timings,
     gather_timed,
 )
+from ex4_research.validation import HandbackLog, make_handback_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SERVER_NAME = "research"
@@ -90,19 +93,17 @@ Goals and quality criteria:
 - Cover the question from both web pages and the primary reports.
 - Give each subagent everything it needs in its prompt: it does not see this
   conversation. Name the topic, the time period, the exact facts wanted and why.
-- Ask subagents for facts, not for a format: each returns findings in its own
-  fixed JSON format, and the synthesizer and code downstream rely on it.
 - Headline figures must be verified against the primary report whenever a finding
   cites a doc_id; delegate that to doc_analyst.
 - {mode_rule}
 - A partial result is still a result: continue with what it found, and never abort
   the run because a tool failed. For a gap, you may try one alternative from its
   suggested_alternatives: at most one extra spawn per gap.
-- When the findings are complete, delegate the report to synthesizer. Its prompt
-  must contain the question and every finding you received, merged into one JSON
-  array exactly as the subagents returned them: do not summarize, edit or drop any.
-  Add process notes: every tool failure, partial result, empty search, skipped step
-  and alternative you tried, each with its cause.
+- When the research is complete, delegate the report to synthesizer. Code attaches
+  every finding the researchers returned to its prompt, so do not copy findings
+  into it. Write the question, what matters most, and process notes: every tool
+  failure, partial result, empty search, skipped step and alternative you tried,
+  each with its cause.
 - Your final answer is the synthesizer's report, unchanged. If the synthesizer
   could not run, or a step failed in a way its report does not show, say so
   explicitly at the top of your answer: never let a failure pass silently."""
@@ -160,12 +161,20 @@ Goals and quality criteria:
 - Cite every claim with its finding's source_id in square brackets, for example
   [acme-market-report-2024] or [https://example.com/page]. A sentence with a figure
   and no citation is a defect.
-- Where findings disagree, give each figure with its scope and source, and explain
-  the difference only as far as the findings do. Never average or pick silently.
 - Prefer a figure confirmed by a report (source_type doc) and say when a headline
   figure has only web support.
-- Label or leave out low-confidence material; never present it as established.
-- End with a section "## Coverage" with two lists. "Well supported": the
+- Structure the report as a short answer, then these sections in this order:
+- "## Established": claims supported by at least two independent sources, or by a
+  primary report (source_type doc), that no credible source contradicts. Cite every
+  supporting source. A press page and the report it summarizes are one source.
+- "## Contested": every point where credible sources give different figures or
+  conclusions, side by side (a table works): each figure with its source, date and
+  scope, then the likely reason they differ, from what the findings say about
+  scope, method or date. If the findings do not show a reason, say so. Never
+  average them, never pick one, never drop one. A claim made only by a
+  low-confidence source (promotional, unsourced, outdated) is not a contest: name
+  it under Coverage as excluded. If nothing is contested, say so.
+- "## Coverage" last, with two lists. "Well supported": the
   conclusions backed by a report or by several credible sources, with citations.
   "Gaps": what is missing or weak, each with its cause, taken from the findings and
   process notes (a search that timed out, an unavailable source category, a search
@@ -192,6 +201,16 @@ def stdio_server(tool: str, fail: str | None = None) -> McpStdioServerConfig:
     return config
 
 
+# Part of each researcher's description, which is what the coordinator reads about
+# it. A live coordinator still dictated its own fields (claim_checked, verified, ...)
+# to doc_analyst, so the format rule lives with the subagent, not in the
+# coordinator's prompt.
+FIXED_FORMAT = (
+    "It returns findings in its own fixed JSON result format, which code checks: ask it "
+    "for facts, never for a format, fields or a table."
+)
+
+
 def build_agents(fail: str | None = None) -> dict[str, AgentDefinition]:
     """The three subagents. Each researcher gets its own server that has only its tool.
 
@@ -204,7 +223,7 @@ def build_agents(fail: str | None = None) -> dict[str, AgentDefinition]:
         "web_researcher": AgentDefinition(
             description="Searches the web for current pages, news and press releases on "
             "a topic. Use it for recent figures, announcements, and to find which "
-            "longer reports exist.",
+            f"longer reports exist. {FIXED_FORMAT}",
             prompt=WEB_RESEARCHER_PROMPT,
             tools=[WEB_SEARCH],
             mcpServers=[{SERVER_NAME: stdio_server("web_search", fail)}],
@@ -215,7 +234,7 @@ def build_agents(fail: str | None = None) -> dict[str, AgentDefinition]:
         "doc_analyst": AgentDefinition(
             description="Reads full research reports from the report library by doc_id. "
             "Use it to verify figures against the primary report, and for definitions, "
-            "methods, detailed figures and forecasts.",
+            f"methods, detailed figures and forecasts. {FIXED_FORMAT}",
             prompt=DOC_ANALYST_PROMPT,
             tools=[LOAD_DOCUMENT],
             mcpServers=[{SERVER_NAME: stdio_server("load_document")}],
@@ -224,8 +243,10 @@ def build_agents(fail: str | None = None) -> dict[str, AgentDefinition]:
             background=False,
         ),
         SYNTHESIZER: AgentDefinition(
-            description="Writes the final report from the findings you pass it as JSON, "
-            "with a citation on every claim. Use it once, after research is complete.",
+            description="Writes the final report, with a citation on every claim, in its "
+            "own fixed structure (Established, Contested, Coverage). Code attaches every "
+            "finding to its prompt: give it the question, what matters most and your "
+            "process notes. Use it once, after research is complete.",
             prompt=SYNTHESIZER_PROMPT,
             tools=[],  # writes from its prompt only
             model="inherit",
@@ -290,6 +311,8 @@ async def keep_in_foreground(
     tool_input = input_data.get("tool_input")
     if not isinstance(tool_input, dict) or not tool_input.get(BACKGROUND_FLAG):
         return {}  # no opinion: Agent is in allowed_tools anyway
+    if tool_input.get("subagent_type") == SYNTHESIZER:
+        return {}  # attach_findings rewrites the synthesizer's input, foreground included
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -309,16 +332,18 @@ def build_options(
     mode: Mode = "parallel",
     ledger: FindingsLedger | None = None,
     fail: str | None = None,
+    handbacks: HandbackLog | None = None,
 ) -> ClaudeAgentOptions:
     """The coordinator: the spawn tool and nothing else, plus the three subagents.
 
     ledger collects this run's findings for the completeness check on the
-    synthesizer's prompt, and its denials; without one, a fresh ledger is used.
+    synthesizer's prompt; without one, a fresh ledger is used.
     fail is an EX4_FAIL value for the web_search servers; it is checked here, so
-    a typo fails fast instead of testing nothing.
+    a typo fails fast instead of testing nothing. handbacks logs the corrections
+    the SubagentStop hook asked researchers for.
     """
     parse_plan(fail)
-    record_findings, require_all_findings = make_completeness_hooks(
+    record_findings, attach_findings = make_completeness_hooks(
         ledger if ledger is not None else FindingsLedger()
     )
     return ClaudeAgentOptions(
@@ -332,11 +357,14 @@ def build_options(
         hooks={
             "PreToolUse": [
                 HookMatcher(matcher=f"{WEB_SEARCH}|{LOAD_DOCUMENT}", hooks=[allow_owner_only]),
-                HookMatcher(
-                    matcher=SPAWN_MATCHER, hooks=[keep_in_foreground, require_all_findings]
-                ),
+                HookMatcher(matcher=SPAWN_MATCHER, hooks=[keep_in_foreground, attach_findings]),
             ],
             "PostToolUse": [HookMatcher(matcher=SPAWN_MATCHER, hooks=[record_findings])],
+            "SubagentStop": [
+                HookMatcher(
+                    hooks=[make_handback_validator(handbacks if handbacks else HandbackLog())]
+                )
+            ],
         },
         # Isolation: ignore the developer's own ~/.claude settings, agents, hooks
         # and MCP servers, so every machine runs the same coordinator.
@@ -358,11 +386,14 @@ FAIL_CASES: Mapping[str, str] = {
 async def run_mode(  # pragma: no cover - live API call
     question: str, mode: Mode, fail: str | None = None
 ) -> ResearchRun:
-    ledger = FindingsLedger()
-    options = build_options(model=os.environ["MODEL"], mode=mode, ledger=ledger, fail=fail)
+    ledger, handbacks = FindingsLedger(), HandbackLog()
+    options = build_options(
+        model=os.environ["MODEL"], mode=mode, ledger=ledger, fail=fail, handbacks=handbacks
+    )
     messages: AsyncIterable[Message] = query(prompt=question, options=options)
     run = collect(await gather_timed(messages), mode=mode)
-    run.denials = ledger.denials
+    run.attached = ledger.attached
+    run.corrections = handbacks.corrections
     return run
 
 
@@ -395,6 +426,11 @@ def cli() -> None:  # pragma: no cover - live API call
         choices=sorted(FAIL_CASES),
         help="inject a web_search failure and print errors, hand-backs and coverage",
     )
+    parser.add_argument(
+        "--save-handbacks",
+        type=Path,
+        help="write every hand-back the validation hook sent back, as JSON, to this file",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING, force=True)
     modes = MODES if args.mode == "both" else (args.mode,)
@@ -410,6 +446,9 @@ def cli() -> None:  # pragma: no cover - live API call
         texts = args.runs == 1
         print(format_run(run, verbose=args.verbose, texts=texts, failures=bool(args.fail)))
         print()
+    if args.save_handbacks:
+        saved = [asdict(c) for run in runs for c in run.corrections]
+        args.save_handbacks.write_text(json.dumps(saved, indent=2), encoding="utf-8")
     print(format_timings(runs))
     if args.runs > 1:
         print("\n" + format_phase_table(runs))

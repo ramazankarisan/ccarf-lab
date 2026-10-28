@@ -9,7 +9,7 @@ the real web, so runs are repeatable and cost only model tokens.
 1. Coordinator, two subagents, structured findings
 2. Parallel subagents, explicit hand-off, synthesis
 3. Error propagation and partial results
-4. Conflicting sources
+4. Hand-back validation and conflicting sources
 5. Quiz
 
 ## Step 1: coordinator, two subagents, structured findings
@@ -87,11 +87,9 @@ flowchart LR
 - **Synthesizer** (no tools, one turn): writes the report from the findings only,
   with `[source_id]` on every claim. Code checks the citations against the findings
   it was given: invented source_ids and sources never cited are reported.
-- **Complete hand-off, enforced** (`completeness.py`). A PostToolUse hook on the
-  spawn tool records every finding a researcher hands back; a PreToolUse hook denies
-  a synthesizer spawn whose prompt is missing any of them (dropped or edited), and
-  the denial names what is missing so the coordinator can retry. The prompt asks
-  for a complete hand-off; the hook guarantees it.
+- **Complete hand-off** (`completeness.py`). A PostToolUse hook on the spawn tool
+  records every finding a researcher hands back. In Step 2 a PreToolUse hook denied
+  a synthesizer prompt that was missing any of them; Step 4 replaced that (see below).
 - **Timing per phase** (`--runs N`): web research, doc verification, synthesis,
   coordinator-only time (no subagent running) and total, as mean (min-max) per mode,
   with the number of spawns per run.
@@ -165,6 +163,44 @@ flowchart LR
 uv run python -m ex4_research.agent --mode parallel --fail archive-down "How big was the EU EV battery recycling market in 2025, and how fast has it grown since 2022?"
 ```
 
+## Step 4: hand-back validation and conflicting sources
+
+The conflict itself was already handled in Steps 2 and 3: the coordinator kept
+EUR 1.9 billion (Nordwell: EU-27, EV only, processing revenue) and EUR 3.4 billion
+(EBCA: EU-27 + EFTA + UK, all lithium-ion, metal value included) apart by scope
+instead of averaging them. Step 4 makes that structure explicit and closes the
+format gap Step 3 exposed.
+
+- **Hand-back validation hook** (`validation.py`, on the `SubagentStop` event, which
+  claude-agent-sdk 0.2.172 calls that). When a researcher stops, the hook parses its
+  last message against the result schema (complete with findings, or partial with
+  `failure_type`, `attempted_queries`, `partial_findings`, `suggested_alternatives`)
+  and checks each sourced finding has its own tool's `source_type`. If it is
+  invalid, the hook blocks the stop once and sends back every error as field and
+  problem, for example `partial.suggested_alternatives: Field required`. The second
+  hand-back is always let through: it either passes or is marked `format_failed` in
+  the trace. Stops are paired by `agent_id`, so a subagent is never blocked twice
+  and can never loop. `--save-handbacks FILE` keeps the raw blocked hand-backs.
+- **Report structure.** The synthesizer's report has three fixed sections:
+  `## Established` (claims backed by at least two independent sources or by a
+  primary report; a press page and the report it summarizes count as one),
+  `## Contested` (conflicting figures side by side, each with source, date and
+  scope, plus the likely reason they differ; never averaged, never one dropped) and
+  `## Coverage` (as in Step 3). The run reports which sections are present.
+
+- **Findings injected in code, not copied by the model.** With the Step 2 hook,
+  live runs denied every synthesizer spawn: the coordinator had to copy 47 to 55
+  findings word for word, and one excerpt always changed. Now the PreToolUse hook
+  rewrites the synthesizer's prompt: the coordinator writes the question, what
+  matters most and its process notes; code attaches every recorded finding as
+  JSON. The hand-off is complete by construction.
+- **The output format lives in the subagent definitions.** Live coordinators kept
+  dictating their own fields (`claim_checked`, `verified`, ...) to doc_analyst. The
+  coordinator's prompt no longer mentions formats; each researcher's description,
+  which is what the coordinator reads about it, says it returns its own fixed
+  format and must be asked for facts only, and its prompt says the format wins over
+  any request. The validation hook enforces it.
+
 ## Code and tests
 
 | Module | What it does | Tests |
@@ -173,5 +209,6 @@ uv run python -m ex4_research.agent --mode parallel --fail archive-down "How big
 | `faults.py` | `EX4_FAIL` failure plans for web_search | `tests/test_ex4_faults.py` |
 | `findings.py` | `Finding`, `NoSources`, complete/partial results, parsing, citations | `tests/test_ex4_findings.py` |
 | `completeness.py` | Hooks: record findings, deny an incomplete synthesizer hand-off | `tests/test_ex4_completeness.py` |
+| `validation.py` | SubagentStop hook: send an unusable hand-back back once | `tests/test_ex4_validation.py` |
 | `timeline.py` | Reads the message stream: spawns, times, concurrency, phases, report | `tests/test_ex4_timeline.py` |
 | `agent.py` | Prompts, subagents, permission hook, options, CLI | `tests/test_ex4_agent.py` |

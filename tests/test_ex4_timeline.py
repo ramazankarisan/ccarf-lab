@@ -25,10 +25,12 @@ from ex4_research.timeline import (
     collect,
     coverage_section,
     findings_status,
+    format_attachments,
+    format_corrections,
     format_degradation,
-    format_denials,
     format_failures,
     format_phase_table,
+    format_report_structure,
     format_run,
     format_synthesis,
     format_timeline,
@@ -36,6 +38,7 @@ from ex4_research.timeline import (
     gather_timed,
     max_concurrency,
     phase_times,
+    report_section,
     run_issues,
     span,
     summarize,
@@ -387,14 +390,14 @@ def test_timings_compare_the_modes():
 # --- denials and brief output -----------------------------------------------------
 
 
-def test_denials_are_listed_or_reported_as_none():
+def test_attachments_are_counted_per_synthesis():
     run = collect(parallel_stream())
-    assert format_denials(run) == "=== Hook denials: none"
-    run.denials = ["Synthesizer prompt is missing 2 of the 9 findings ..."]
-    assert format_denials(run) == (
-        "=== Hook denials:\n  - Synthesizer prompt is missing 2 of the 9 findings ..."
+    assert format_attachments(run) == (
+        "=== Findings attached by code to the synthesizer: none (no synthesis)"
     )
-    assert "=== Hook denials:" in format_run(run)
+    run.attached = [47]
+    assert format_attachments(run) == "=== Findings attached by code to the synthesizer: 47"
+    assert "=== Findings attached by code to the synthesizer: 47" in format_run(run)
 
 
 def test_brief_output_keeps_the_checks_but_not_the_texts():
@@ -532,7 +535,6 @@ def failure_stream(report: str = REPORT_WITH_COVERAGE) -> list[Timed]:
 
 def failure_run(report: str = REPORT_WITH_COVERAGE) -> ResearchRun:
     run = collect(failure_stream(report), mode="parallel")
-    run.denials = ["Synthesizer prompt is missing 2 of the 2 findings ..."]
     return run
 
 
@@ -554,7 +556,6 @@ def test_run_issues_lists_every_degradation():
         "#1 web_researcher: partial (timeout): 2 findings (1 no-sources)",
         "#1 web_researcher: reported empty searches",
         "#2 synthesizer: spawn failed or was denied",
-        "completeness hook denied a synthesizer spawn (1)",
     ]
 
 
@@ -606,7 +607,7 @@ def test_failures_without_trouble_say_none():
 
 def test_degradation_shows_issues_and_the_coverage_section():
     text = format_degradation(failure_run())
-    assert "  - completeness hook denied a synthesizer spawn (1)" in text
+    assert "  - #2 synthesizer: spawn failed or was denied" in text
     assert COVERAGE in text
     assert "!!!" not in text
 
@@ -641,3 +642,114 @@ def test_failures_list_empty_searches_from_a_complete_result():
     assert "--- #1 web_researcher: complete: 1 findings (1 no-sources)" in text
     assert "no-sources finding: No sources found for 2023 tonnage. (query: 'q')" in text
     assert "attempted_queries" not in text
+
+
+# --- Step 4: corrections and report structure -------------------------------------
+
+STRUCTURED = """# EU market
+
+Short answer.
+
+## Established
+- EUR 1.9 billion in 2025 for EU-27 EV processing revenue [nordwell-eu-outlook-2026].
+
+## Contested
+### 2025 market size
+- EUR 1.9 billion: EU-27, EV only, service revenue [nordwell-eu-outlook-2026].
+- EUR 3.4 billion: EU-27 + EFTA + UK, all lithium-ion, metal value included
+  [ebca-circularity-report-2025].
+The difference is scope, as both reports state.
+
+## Coverage
+- Gaps: none failed.
+"""
+
+
+def structured_run(report: str = STRUCTURED) -> ResearchRun:
+    return collect([(1.0, result_message(report=report))], mode="parallel")
+
+
+def test_report_section_stops_at_the_next_section_but_keeps_subheadings():
+    contested = report_section(STRUCTURED, "Contested")
+    assert contested is not None
+    assert contested.startswith("## Contested\n### 2025 market size")
+    assert contested.endswith("as both reports state.")
+    assert report_section(STRUCTURED, "Established") == (
+        "## Established\n- EUR 1.9 billion in 2025 for EU-27 EV processing revenue "
+        "[nordwell-eu-outlook-2026]."
+    )
+
+
+def test_report_structure_lists_each_section_and_shows_contested():
+    text = format_report_structure(structured_run())
+    assert text.startswith("=== Report sections: Established yes, Contested yes, Coverage yes")
+    assert "### 2025 market size" in text
+    assert "## Established\n- EUR 1.9 billion" in text
+    assert "## Coverage\n- Gaps: none failed." in text
+    assert "### 2025" not in format_report_structure(structured_run(), texts=False)
+
+
+def test_report_structure_flags_missing_sections():
+    run = structured_run("# Report\n\n## Coverage\n- x")
+    text = format_report_structure(run, texts=False)
+    assert text == "=== Report sections: Established MISSING, Contested MISSING, Coverage yes"
+
+
+def test_corrections_show_the_errors_sent_back_and_the_second_try():
+    from ex4_research.validation import Correction
+
+    run = structured_run()
+    assert format_corrections(run) == "=== Hand-back corrections (SubagentStop): none"
+    run.corrections = [
+        Correction(
+            "web_researcher",
+            "a",
+            ["partial.suggested_alternatives: Field required"],
+            "x",
+            outcome="passed",
+        ),
+        Correction(
+            "doc_analyst",
+            "b",
+            ["(whole hand-back): no JSON object"],
+            "[]",
+            outcome="format_failed",
+            final_errors=["(whole hand-back): no JSON object"],
+        ),
+        Correction("doc_analyst", "c", ["e"], "[]"),
+    ]
+    assert format_corrections(run) == (
+        "=== Hand-back corrections (SubagentStop):\n"
+        "--- web_researcher (a): blocked, 1 error(s) sent:\n"
+        "    - partial.suggested_alternatives: Field required\n"
+        "  second hand-back: passed\n"
+        "--- doc_analyst (b): blocked, 1 error(s) sent:\n"
+        "    - (whole hand-back): no JSON object\n"
+        "  second hand-back: format_failed (1 error(s)):\n"
+        "    - (whole hand-back): no JSON object\n"
+        "--- doc_analyst (c): blocked, 1 error(s) sent:\n"
+        "    - e\n"
+        "  second hand-back: none arrived"
+    )
+    assert run_issues(run)[-2:] == [
+        "doc_analyst: hand-back format_failed after one correction",
+        "doc_analyst: hand-back pending after one correction",
+    ]
+
+
+def test_format_run_shows_corrections_and_structure():
+    run = structured_run()
+    full, brief = format_run(run), format_run(run, texts=False)
+    assert "=== Hand-back corrections (SubagentStop): none" in full
+    assert full.count("### 2025 market size") == 1  # in the report, not printed twice
+    assert brief.count("### 2025 market size") == 1  # report left out, Contested shown
+
+
+def test_synthesis_says_code_attached_the_findings():
+    """The trace shows the coordinator's prompt from before the hook rewrote it."""
+    run = collect(parallel_stream(), mode="parallel")
+    run.attached = [50]
+    text = format_synthesis(run)
+    assert "=== Synthesizer's prompt (" in text
+    assert "the coordinator's text; code attached 50 findings):" in text
+    assert "--- citations: 2 distinct source_ids cited; not in the findings: none;" in text

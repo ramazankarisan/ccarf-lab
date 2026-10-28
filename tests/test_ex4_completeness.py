@@ -5,13 +5,12 @@ import pytest
 from claude_agent_sdk import PostToolUseHookInput, PreToolUseHookInput
 
 from ex4_research.completeness import (
-    MAX_LISTED,
+    FINDINGS_HEADER,
     FindingsLedger,
-    denial_reason,
     make_completeness_hooks,
     response_text,
 )
-from ex4_research.findings import Finding, NoSources
+from ex4_research.findings import Finding, NoSources, valid_findings
 from ex4_research.timeline import SPAWN_TOOL, SYNTHESIZER
 from tests.test_ex4_findings import DOC_FINDING, NO_SOURCES, WEB_FINDING
 
@@ -77,53 +76,17 @@ def test_ledger_records_each_finding_once():
     assert ledger.received == [WEB, DOC]
 
 
-def test_nothing_is_missing_when_every_finding_is_in_the_prompt():
-    ledger = FindingsLedger(received=[WEB, DOC])
-    assert ledger.missing_from(f"Question?\n{as_json(WEB)}\nand\n{as_json(DOC)}") == []
+def test_attach_to_appends_every_finding_after_the_coordinators_text():
+    empty = NoSources.model_validate(NO_SOURCES)
+    ledger = FindingsLedger(received=[WEB, DOC, empty])
+    prompt = ledger.attach_to("Question: how big?\nProcess notes: the archive timed out.\n")
+    assert prompt.startswith("Question: how big?\nProcess notes: the archive timed out.\n\n")
+    assert FINDINGS_HEADER in prompt
+    assert valid_findings(prompt) == [WEB, DOC, empty]  # exactly, nothing retyped
 
 
-def test_a_dropped_or_edited_finding_is_missing():
-    ledger = FindingsLedger(received=[WEB, DOC])
-    edited = DOC.model_copy(update={"claim": "About EUR 2 billion."})
-    assert ledger.missing_from(as_json(WEB, edited)) == [DOC]
-
-
-def test_an_invalid_finding_in_the_prompt_does_not_hide_the_valid_ones():
-    """Run 5 of the live timing runs: one malformed finding made all 29 count as missing."""
-    ledger = FindingsLedger(received=[WEB, DOC])
-    broken = {**DOC_FINDING, "source_type": "report"}
-    prompt = json.dumps([WEB.model_dump(mode="json"), broken, DOC.model_dump(mode="json")])
-    assert ledger.missing_from(prompt) == []
-
-
-def test_findings_count_however_the_coordinator_nests_them():
-    """Two live runs wrapped the result objects in an outer array; nothing was missing."""
-    ledger = FindingsLedger(received=[WEB, DOC])
-    wrapped = [
-        {
-            "subagent": "web_researcher",
-            "result": {"status": "complete", "findings": [WEB.model_dump(mode="json")]},
-        },
-        {"status": "complete", "findings": [DOC.model_dump(mode="json")]},
-    ]
-    assert ledger.missing_from(f"Findings:\n{json.dumps(wrapped, indent=2)}") == []
-
-
-def test_a_prompt_without_findings_misses_them_all():
-    ledger = FindingsLedger(received=[WEB, DOC])
-    assert ledger.missing_from("Summarize what you know.") == [WEB, DOC]
-
-
-def test_denial_reason_names_the_missing_findings_and_counts_the_rest():
-    reason = denial_reason([DOC] * (MAX_LISTED + 2), total=12, read=2)
-    assert reason.startswith(f"Synthesizer prompt is missing {MAX_LISTED + 2} of the 12 findings")
-    assert "(it contains 2 valid findings)" in reason
-    assert "[nordwell-eu-outlook-2026] EU-27 EV recycling revenue" in reason
-    assert reason.endswith("; and 2 more.")
-    assert denial_reason([WEB], total=1).endswith("in 2025.")
-
-
-# --- hooks --------------------------------------------------------------------
+def test_attach_to_with_no_findings_says_so_in_json():
+    assert FindingsLedger().attach_to("Q").endswith(f"{FINDINGS_HEADER}\n[]")
 
 
 @pytest.mark.anyio
@@ -145,16 +108,6 @@ async def test_recorder_keeps_findings_from_researcher_hand_backs():
 
 
 @pytest.mark.anyio
-async def test_a_no_sources_finding_must_reach_the_synthesizer_too():
-    empty = NoSources.model_validate(NO_SOURCES)
-    ledger = FindingsLedger(received=[WEB, empty])
-    _, guard = make_completeness_hooks(ledger)
-    output = await guard(pre_spawn(SYNTHESIZER, as_json(WEB)), "t", {"signal": None})
-    reason = output["hookSpecificOutput"]["permissionDecisionReason"]  # type: ignore[typeddict-item]
-    assert "[search: EU battery tonnage recycled 2023] No sources found" in reason
-
-
-@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("subagent", "response"),
     [
@@ -169,30 +122,41 @@ async def test_recorder_ignores_what_is_not_researcher_findings(subagent, respon
     assert ledger.received == []
 
 
+async def attach(ledger: FindingsLedger, hook_input: PreToolUseHookInput) -> Any:
+    _, attach_findings = make_completeness_hooks(ledger)
+    return await attach_findings(hook_input, "t", {"signal": None})
+
+
 @pytest.mark.anyio
-async def test_guard_denies_a_synthesizer_prompt_with_missing_findings():
+async def test_the_synthesizer_prompt_gets_every_finding_from_code():
+    """Live runs: a coordinator copying 50 findings changed one each time."""
     ledger = FindingsLedger(received=[WEB, DOC])
-    _, guard = make_completeness_hooks(ledger)
-    output = await guard(pre_spawn(SYNTHESIZER, as_json(WEB)), "t", {"signal": None})
-    specific: Any = output["hookSpecificOutput"]  # type: ignore[typeddict-item]
-    assert specific["permissionDecision"] == "deny"
-    assert "missing 1 of the 2 findings" in specific["permissionDecisionReason"]
-    assert ledger.denials == [specific["permissionDecisionReason"]]
+    output = await attach(ledger, pre_spawn(SYNTHESIZER, "Question: how big? Notes: none."))
+    specific = output["hookSpecificOutput"]
+    assert specific["permissionDecision"] == "allow"
+    updated = specific["updatedInput"]
+    assert updated["subagent_type"] == SYNTHESIZER
+    assert updated["prompt"].startswith("Question: how big? Notes: none.\n\n")
+    assert valid_findings(updated["prompt"]) == [WEB, DOC]
+    assert updated["run_in_background"] is False
+    assert ledger.attached == [2]
 
 
 @pytest.mark.anyio
-async def test_guard_allows_a_complete_prompt_and_other_spawns():
+async def test_findings_the_coordinator_dropped_or_edited_are_still_attached():
     ledger = FindingsLedger(received=[WEB, DOC])
-    _, guard = make_completeness_hooks(ledger)
-    assert await guard(pre_spawn(SYNTHESIZER, as_json(WEB, DOC)), "t", {"signal": None}) == {}
-    assert await guard(pre_spawn("doc_analyst", "Check it."), "t", {"signal": None}) == {}
-    assert ledger.denials == []
+    edited = DOC.model_copy(update={"claim": "About EUR 2 billion."})
+    output = await attach(ledger, pre_spawn(SYNTHESIZER, f"Findings: {as_json(edited)}"))
+    attached = valid_findings(output["hookSpecificOutput"]["updatedInput"]["prompt"])
+    assert WEB in attached
+    assert DOC in attached
 
 
 @pytest.mark.anyio
-async def test_guard_ignores_a_spawn_without_a_dict_input():
+async def test_other_spawns_are_left_alone():
     ledger = FindingsLedger(received=[WEB])
-    _, guard = make_completeness_hooks(ledger)
+    assert await attach(ledger, pre_spawn("doc_analyst", "Check it.")) == {}
     hook_input = pre_spawn(SYNTHESIZER, "")
     hook_input["tool_input"] = "not a dict"  # type: ignore[typeddict-item]
-    assert await guard(hook_input, "t", {"signal": None}) == {}
+    assert await attach(ledger, hook_input) == {}
+    assert ledger.attached == []
