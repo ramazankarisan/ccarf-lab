@@ -16,6 +16,9 @@ htmlcov/
 dist/
 build/
 
+# Claude Code: personal settings stay local; .claude/rules and skills are shared
+.claude/settings.local.json
+
 # OS / editors
 .DS_Store
 .idea/

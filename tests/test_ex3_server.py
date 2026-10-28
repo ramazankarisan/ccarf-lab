@@ -231,3 +231,40 @@ async def test_empty_once_returns_a_valid_empty_result_first(failures):
     assert data == {"results": [], "count": 0}
     _, data = await call("web_search", {"query": "EU recycling market"})
     assert data["count"] >= 1
+
+
+# --- the API key (.mcp.json passes it from the environment) --------------------
+
+
+def test_the_key_comes_from_the_environment():
+    from ex3_research.server import require_api_key
+
+    assert require_api_key({"RESEARCH_API_KEY": "dev-research-key"}) == "dev-research-key"
+
+
+@pytest.mark.parametrize(
+    "environ",
+    [
+        {},
+        {"RESEARCH_API_KEY": ""},
+        {"RESEARCH_API_KEY": "  "},
+        {"RESEARCH_API_KEY": "${RESEARCH_API_KEY}"},
+    ],
+    ids=["unset", "empty", "blank", "unexpanded placeholder"],
+)
+def test_a_missing_key_stops_the_server(environ):
+    from ex3_research.server import require_api_key
+
+    with pytest.raises(SystemExit, match="RESEARCH_API_KEY is not set"):
+        require_api_key(environ)
+
+
+def test_mcp_json_registers_the_server_without_a_secret():
+    """The committed config may reference the key, never contain it."""
+    import json
+    from pathlib import Path
+
+    config = json.loads((Path(__file__).parent.parent / ".mcp.json").read_text())
+    research = config["mcpServers"]["research"]
+    assert research["args"] == ["run", "python", "-m", "ex3_research.server"]
+    assert research["env"] == {"RESEARCH_API_KEY": "${RESEARCH_API_KEY}"}

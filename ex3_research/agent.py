@@ -38,6 +38,7 @@ from dotenv import load_dotenv
 from ex3_research.completeness import FindingsLedger, make_completeness_hooks
 from ex3_research.faults import FAIL_ENV, parse_plan
 from ex3_research.findings import RESULT_FORMAT
+from ex3_research.server import require_api_key
 from ex3_research.timeline import (
     SPAWN_TOOL,
     SPAWN_TOOL_NAMES,
@@ -400,6 +401,7 @@ async def main(  # pragma: no cover - live API call
     question: str, modes: tuple[Mode, ...], runs: int, fail: str | None = None
 ) -> list[ResearchRun]:
     load_dotenv()
+    require_api_key(os.environ)  # fail here, not in every subagent's server process
     # One after the other, never at the same time, so the timings don't compete.
     # Modes alternate (p, s, p, s ...) so a slow minute of the API hits both.
     return [await run_mode(question, mode, fail) for _ in range(runs) for mode in modes]

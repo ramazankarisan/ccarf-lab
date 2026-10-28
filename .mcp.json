@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "research": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "python", "-m", "ex3_research.server"],
+      "env": {
+        "RESEARCH_API_KEY": "${RESEARCH_API_KEY}"
+      }
+    }
+  }
+}

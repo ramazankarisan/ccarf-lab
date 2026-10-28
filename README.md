@@ -81,7 +81,9 @@ tests/live/          live scenario tests (marker: live, skipped by default)
 web/                 React + TypeScript app for Exercise 1
 docs/                screenshots
 lefthook.yml         git hooks for both stacks
-CLAUDE.md            working rules for AI coding agents in this repo
+CLAUDE.md            project rules for AI coding agents; each exercise adds its own
+.claude/rules/       path-scoped rules (tests.md applies to test files only)
+docs/live-runs.md    commands that call the real API, imported by CLAUDE.md
 ```
 
 ## License

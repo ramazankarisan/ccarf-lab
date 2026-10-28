@@ -111,6 +111,10 @@ uv run python -m ex3_research.agent --runs 3 "$Q"                        # per-p
 uv run python -m ex3_research.agent --mode parallel --fail archive-down "$Q"  # inject a failure
 ```
 
+The research server needs `RESEARCH_API_KEY` (a dummy, see `.env.example`). The repo's
+`.mcp.json` also registers it for Claude Code under the name `research`, passing the
+key as `${RESEARCH_API_KEY}` from the environment.
+
 `--fail` takes `timeout-once` (each searcher's first call times out),
 `archive-down` (every news-archive search times out) or `empty-once` (the first call
 returns nothing). It then also prints each tool error, each hand-back's status and

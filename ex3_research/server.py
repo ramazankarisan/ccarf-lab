@@ -14,7 +14,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -180,6 +180,28 @@ def load_document(
     return read_json(path)
 
 
+# The server refuses to start without this key. It is a dummy (nothing checks its
+# value), standing in for a real API key a production server would need. It comes
+# from the environment: .mcp.json passes "${RESEARCH_API_KEY}", never a value.
+API_KEY_ENV = "RESEARCH_API_KEY"
+
+
+def require_api_key(environ: Mapping[str, str]) -> str:
+    """The research API key from environ; raise SystemExit if it is missing.
+
+    Claude Code passes an unset ${VAR} in .mcp.json through as the literal text
+    "${VAR}", so that counts as missing too.
+    """
+    key = environ.get(API_KEY_ENV, "").strip()
+    if not key or key.startswith("${"):
+        raise SystemExit(
+            f"{API_KEY_ENV} is not set. For Claude Code (.mcp.json), export it in the "
+            "shell that starts claude; for ex3_research.agent, .env also works. Never "
+            "put the value in .mcp.json."
+        )
+    return key
+
+
 def build_server(tool_names: Iterable[str] = ()) -> MCPServer:
     """A server with the named tools, or with every tool if no names are given."""
     names = list(tool_names) or list(TOOLS)
@@ -196,5 +218,6 @@ mcp = build_server()
 
 
 if __name__ == "__main__":
+    require_api_key(os.environ)
     FAILURES = plan_from_env(os.environ)
     build_server(sys.argv[1:]).run()  # stdio transport by default
