@@ -14,18 +14,23 @@ Each exercise adds one idea at a time, and each idea is pinned down by tests.
 |---|---|---|
 | [1. Customer-support agent](ex1_support_agent/README.md) | An agent on the Claude API and the Agent SDK: MCP tools, structured errors, hooks that enforce business rules, escalation, case facts, a web app | done |
 | [2. Structured extraction](ex2_extraction/README.md) | An invoice extraction pipeline: a Pydantic schema as a forced tool, semantic checks with targeted retries, an evaluation against ground truth, prompt variants measured one change at a time, the Batches API | done |
-| [4. Multi-agent research](ex4_research/README.md) | A coordinator on the Agent SDK that delegates to two subagents with one tool each, over a local fake corpus, and gets structured findings back | in progress |
+| [3. Multi-agent research](ex3_research/README.md) | A coordinator on the Agent SDK with single-tool subagents: parallel spawning, structured errors and partial results, hand-back validation, findings passed in code, a report that keeps conflicting sources apart | done |
 
 ## Highlights
 
 - **Rules in code, not just in the prompt.** Exercise 1 enforces a $500 refund limit
   and per-order authorization in Agent SDK hooks, so the model can't be talked out of
   them. Exercise 2 checks invoice arithmetic in code and sends documents that don't add
-  up to a human instead of letting the model "fix" them.
+  up to a human instead of letting the model "fix" them. Exercise 3 validates every
+  subagent's hand-back on SubagentStop and passes findings between agents in code,
+  after live runs showed a model can't copy 50 findings without changing one.
 - **Measured, not assumed.** Exercise 2 scores every field against hand-written ground
   truth over 3 runs per change: 421/432 for the zero-shot baseline, 432/432 with
   checks, retries and field descriptions. Few-shot examples were tried and dropped:
   no gain, about 15% more input tokens per call.
+- **Failures made visible.** Exercise 3 injects timeouts and empty results: subagents
+  retry once, hand back partial results with what they tried, and the report ends
+  with what is well supported and what is missing, with the cause.
 - **Agents tested like software.** 100% line and branch coverage offline, with
   scripted fake models; live scenarios assert on tool calls and must pass 3 runs out of 3.
 - **Production habits.** Strict typing, secret scanning and Conventional Commits in
@@ -51,7 +56,7 @@ Then follow the README of the exercise you want to run.
 
 ```bash
 uv run pytest --cov                 # offline, 100% line and branch coverage
-uv run mypy ex1_support_agent ex2_extraction ex4_research tests  # strict type checking
+uv run mypy ex1_support_agent ex2_extraction ex3_research tests  # strict type checking
 npm --prefix web test               # React tests (Vitest + Testing Library)
 uv run pytest -m live               # live scenarios against the real API (cost money)
 npx --prefix web lefthook run pre-commit --all-files
@@ -70,8 +75,8 @@ npx --prefix web lefthook run pre-commit --all-files
 ```text
 ex1_support_agent/   Exercise 1: support agent (own README)
 ex2_extraction/      Exercise 2: invoice extraction (own README)
-ex4_research/        Exercise 4: multi-agent research (own README)
-tests/               one test module per source module (test_ex2_* / test_ex4_* per exercise)
+ex3_research/        Exercise 3: multi-agent research (own README)
+tests/               one test module per source module (test_ex2_* / test_ex3_* per exercise)
 tests/live/          live scenario tests (marker: live, skipped by default)
 web/                 React + TypeScript app for Exercise 1
 docs/                screenshots

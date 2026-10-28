@@ -1,14 +1,13 @@
 """Hooks that make the hand-off to the synthesizer complete by construction.
 
-Step 2 asked the coordinator to copy every finding into the synthesizer's prompt
-and denied a prompt that missed one. Live runs showed a model cannot copy 50
-findings exactly: one excerpt always changed, and every synthesizer spawn was
-denied. So code passes the data instead of the model:
+Asking the coordinator to copy every finding into the synthesizer's prompt does
+not work: in live runs a model copying 50 findings changed one excerpt every
+time. So code passes the data instead of the model:
 
 - PostToolUse on the spawn tool records every finding a researcher hands back.
 - PreToolUse on the spawn tool rewrites a synthesizer spawn's prompt: the
   coordinator's text (question, emphasis, process notes) plus every recorded
-  finding as JSON, attached by code.
+  finding as JSON.
 """
 
 import contextlib
@@ -20,13 +19,13 @@ from typing import Any
 
 from claude_agent_sdk import HookCallback, HookContext, HookInput, HookJSONOutput
 
-from ex4_research.findings import (
+from ex3_research.findings import (
     Finding,
     NoSources,
     findings_of,
     parse_research_result,
 )
-from ex4_research.timeline import EXPECTED_SOURCE_TYPE, SYNTHESIZER
+from ex3_research.timeline import EXPECTED_SOURCE_TYPE, SYNTHESIZER
 
 logger = logging.getLogger(__name__)
 

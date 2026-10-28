@@ -13,8 +13,8 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from ex4_research.agent import LOAD_DOCUMENT, WEB_SEARCH
-from ex4_research.timeline import (
+from ex3_research.agent import LOAD_DOCUMENT, WEB_SEARCH
+from ex3_research.timeline import (
     SPAWN_TOOL,
     SYNTHESIZER,
     SYNTHESIZER_PROMPT_PREVIEW,
@@ -44,7 +44,7 @@ from ex4_research.timeline import (
     summarize,
     union_length,
 )
-from tests.test_ex4_findings import DOC_FINDING, PARTIAL, WEB_FINDING
+from tests.test_ex3_findings import DOC_FINDING, PARTIAL, WEB_FINDING
 
 # Offline only: scripted message streams, never a live agent.
 
@@ -696,7 +696,7 @@ def test_report_structure_flags_missing_sections():
 
 
 def test_corrections_show_the_errors_sent_back_and_the_second_try():
-    from ex4_research.validation import Correction
+    from ex3_research.validation import Correction
 
     run = structured_run()
     assert format_corrections(run) == "=== Hand-back corrections (SubagentStop): none"

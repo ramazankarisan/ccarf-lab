@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
-from ex4_research.server import DOC_ID_PATTERN
+from ex3_research.server import DOC_ID_PATTERN
 
 # One http(s) URL and nothing else: no "url (report doc_id: ...)", no "url ; url".
 URL_PATTERN = re.compile(r"https?://[^\s;,()\[\]]+")
@@ -190,53 +190,6 @@ def parse_findings(text: str) -> list[Finding | NoSources]:
         return FINDINGS.validate_python(value)
     except ValidationError as error:
         raise ValueError(f"findings do not match the schema: {compact_error(error)}") from error
-
-
-# Where any JSON object or array may start.
-VALUE_START = re.compile(r"[\[{]")
-
-
-def find_json_values(text: str) -> list[Any]:
-    """Every top-level JSON object or array in text, decoded, in order."""
-    decoder = json.JSONDecoder()
-    values: list[Any] = []
-    end = 0
-    for match in VALUE_START.finditer(text):
-        if match.start() < end:
-            continue  # inside the value decoded last
-        try:
-            value, end = decoder.raw_decode(text, match.start())
-        except json.JSONDecodeError:
-            continue
-        values.append(value)
-    return values
-
-
-def valid_findings(text: str) -> list[Finding | NoSources]:
-    """Every valid finding anywhere in text's JSON, at any depth; the rest is skipped.
-
-    For checks that look at content, not layout. Live coordinators passed findings
-    with an invalid one among them, as one array per subagent, and wrapped in their
-    own outer array of result objects; all of those still count.
-    """
-    found: list[Finding | NoSources] = []
-
-    def walk(value: Any) -> None:
-        if isinstance(value, dict):
-            try:
-                found.append(ANY_FINDING.validate_python(value))
-                return
-            except ValidationError:
-                pass
-            for item in value.values():
-                walk(item)
-        elif isinstance(value, list):
-            for item in value:
-                walk(item)
-
-    for value in find_json_values(text):
-        walk(value)
-    return found
 
 
 # --- Citations ------------------------------------------------------------------

@@ -2,13 +2,12 @@
 
 The coordinator has no research tools of its own: it can only spawn subagents.
 Two researchers each see one MCP tool and return structured findings; a
-synthesizer with no tools writes the report from the findings the coordinator
-hands it. Subagents never talk to each other: everything goes through the
-coordinator (hub and spoke).
+synthesizer with no tools writes the report from the findings that code
+attaches to its prompt. Subagents never talk to each other (hub and spoke).
 
 Run against the real API (both modes, one after the other):
-    uv run python -m ex4_research.agent "How big was the EU EV battery recycling market in 2025?"
-    uv run python -m ex4_research.agent --mode parallel --verbose "..."
+    uv run python -m ex3_research.agent "How big was the EU EV battery recycling market in 2025?"
+    uv run python -m ex3_research.agent --mode parallel --verbose "..."
 """
 
 import argparse
@@ -36,10 +35,10 @@ from claude_agent_sdk import (
 from claude_agent_sdk.types import McpStdioServerConfig  # not re-exported at the top level
 from dotenv import load_dotenv
 
-from ex4_research.completeness import FindingsLedger, make_completeness_hooks
-from ex4_research.faults import FAIL_ENV, parse_plan
-from ex4_research.findings import RESULT_FORMAT
-from ex4_research.timeline import (
+from ex3_research.completeness import FindingsLedger, make_completeness_hooks
+from ex3_research.faults import FAIL_ENV, parse_plan
+from ex3_research.findings import RESULT_FORMAT
+from ex3_research.timeline import (
     SPAWN_TOOL,
     SPAWN_TOOL_NAMES,
     SYNTHESIZER,
@@ -50,7 +49,7 @@ from ex4_research.timeline import (
     format_timings,
     gather_timed,
 )
-from ex4_research.validation import HandbackLog, make_handback_validator
+from ex3_research.validation import HandbackLog, make_handback_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SERVER_NAME = "research"
@@ -189,12 +188,12 @@ Return the report as Markdown, nothing else."""
 def stdio_server(tool: str, fail: str | None = None) -> McpStdioServerConfig:
     """The research server as a subprocess over stdio, with only this one tool registered.
 
-    fail sets EX4_FAIL in that process, to inject a failure (see faults.py).
+    fail sets EX3_FAIL in that process, to inject a failure (see faults.py).
     """
     config: McpStdioServerConfig = {
         "type": "stdio",
         "command": "uv",
-        "args": ["run", "python", "-m", "ex4_research.server", tool],
+        "args": ["run", "python", "-m", "ex3_research.server", tool],
     }
     if fail:
         config["env"] = {FAIL_ENV: fail}
@@ -338,7 +337,7 @@ def build_options(
 
     ledger collects this run's findings for the completeness check on the
     synthesizer's prompt; without one, a fresh ledger is used.
-    fail is an EX4_FAIL value for the web_search servers; it is checked here, so
+    fail is an EX3_FAIL value for the web_search servers; it is checked here, so
     a typo fails fast instead of testing nothing. handbacks logs the corrections
     the SubagentStop hook asked researchers for.
     """
@@ -375,7 +374,7 @@ def build_options(
 
 # --- CLI ----------------------------------------------------------------------
 
-# --fail names and the EX4_FAIL value each one sets (see faults.py).
+# --fail names and the EX3_FAIL value each one sets (see faults.py).
 FAIL_CASES: Mapping[str, str] = {
     "timeout-once": "timeout_once",
     "archive-down": "category_timeout:news archive",

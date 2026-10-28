@@ -5,7 +5,7 @@ import pytest
 from claude_agent_sdk import PreToolUseHookInput
 from mcp import Client
 
-from ex4_research.agent import (
+from ex3_research.agent import (
     COORDINATOR_MAX_TURNS,
     FIXED_FORMAT,
     LOAD_DOCUMENT,
@@ -23,14 +23,14 @@ from ex4_research.agent import (
     mcp_tool_name,
     tool_decision,
 )
-from ex4_research.completeness import FindingsLedger
-from ex4_research.findings import RESULT_FORMAT, Finding, valid_findings
-from ex4_research.server import mcp
-from ex4_research.timeline import REPORT_SECTIONS, SPAWN_TOOL, SYNTHESIZER
-from ex4_research.validation import HandbackLog
-from tests.test_ex4_completeness import post_spawn, pre_spawn
-from tests.test_ex4_findings import DOC_FINDING
-from tests.test_ex4_validation import stop
+from ex3_research.completeness import FindingsLedger
+from ex3_research.findings import RESULT_FORMAT, Finding, parse_findings
+from ex3_research.server import mcp
+from ex3_research.timeline import REPORT_SECTIONS, SPAWN_TOOL, SYNTHESIZER
+from ex3_research.validation import HandbackLog
+from tests.test_ex3_completeness import post_spawn, pre_spawn
+from tests.test_ex3_findings import DOC_FINDING
+from tests.test_ex3_validation import stop
 
 # Offline only: these build options and prompts, never start an agent.
 
@@ -97,7 +97,7 @@ def test_each_researcher_gets_a_server_with_only_its_own_tool(agent_name, tool):
     assert agent.mcpServers is not None
     [server] = agent.mcpServers
     assert isinstance(server, dict)
-    assert server[SERVER_NAME]["args"] == ["run", "python", "-m", "ex4_research.server", tool]
+    assert server[SERVER_NAME]["args"] == ["run", "python", "-m", "ex3_research.server", tool]
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -141,7 +141,7 @@ async def test_findings_recorded_after_a_spawn_are_attached_for_the_synthesizer(
     await record(post_spawn("doc_analyst", envelope), "t", {"signal": None})
     assert ledger.received == [finding]
     output: Any = await attach(pre_spawn(SYNTHESIZER, "No findings here."), "t", {"signal": None})
-    assert valid_findings(output["hookSpecificOutput"]["updatedInput"]["prompt"]) == [finding]
+    assert parse_findings(output["hookSpecificOutput"]["updatedInput"]["prompt"]) == [finding]
 
 
 def test_build_options_without_a_ledger_still_attaches():
@@ -294,7 +294,7 @@ def test_fail_reaches_only_the_web_search_servers():
     [doc] = agents["doc_analyst"].mcpServers or []
     assert isinstance(web, dict)
     assert isinstance(doc, dict)
-    assert web[SERVER_NAME]["env"] == {"EX4_FAIL": "empty_once"}
+    assert web[SERVER_NAME]["env"] == {"EX3_FAIL": "empty_once"}
     assert "env" not in doc[SERVER_NAME]
 
 
@@ -305,13 +305,13 @@ def test_no_fail_means_no_env():
 
 
 def test_a_mistyped_fail_value_is_rejected_before_any_run():
-    with pytest.raises(ValueError, match="Unknown EX4_FAIL case"):
+    with pytest.raises(ValueError, match="Unknown EX3_FAIL case"):
         build_options(model="m", fail="timeout-once")
 
 
 def test_cli_fail_cases_are_valid_plans():
-    from ex4_research.agent import FAIL_CASES
-    from ex4_research.faults import parse_plan
+    from ex3_research.agent import FAIL_CASES
+    from ex3_research.faults import parse_plan
 
     assert {parse_plan(value).case for value in FAIL_CASES.values()} == {
         "timeout_once",

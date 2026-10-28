@@ -22,7 +22,7 @@ from claude_agent_sdk import (
 )
 
 from ex1_support_agent.agent import result_text
-from ex4_research.findings import (
+from ex3_research.findings import (
     Finding,
     NoSources,
     Partial,
@@ -33,7 +33,7 @@ from ex4_research.findings import (
 )
 
 if TYPE_CHECKING:  # validation.py imports this module; import it for types only
-    from ex4_research.validation import Correction
+    from ex3_research.validation import Correction
 
 # The subagent-spawning tool. The exam (and older SDKs) call it "Task"; in
 # claude-agent-sdk 0.2.172 (bundled CLI 2.1.308) it is "Agent". The CLI still

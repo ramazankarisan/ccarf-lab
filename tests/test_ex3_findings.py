@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from ex4_research.findings import (
+from ex3_research.findings import (
     RESULT_FORMAT,
     Complete,
     Finding,
@@ -15,7 +15,6 @@ from ex4_research.findings import (
     findings_of,
     parse_findings,
     parse_research_result,
-    valid_findings,
 )
 
 DOC_FINDING: dict[str, Any] = {
@@ -257,11 +256,6 @@ def test_no_sources_rejects(data):
         NoSources.model_validate(data)
 
 
-def test_valid_findings_reads_both_kinds_inside_result_objects():
-    found = valid_findings(json.dumps(PARTIAL) + complete(DOC_FINDING))
-    assert [type(f) for f in found] == [Finding, NoSources, Finding]
-
-
 def test_citations_ignore_no_sources_findings():
     check = check_citations("x", [NoSources.model_validate(NO_SOURCES)])
     assert check.uncited == frozenset()
@@ -270,12 +264,3 @@ def test_citations_ignore_no_sources_findings():
 def test_result_format_describes_both_statuses_and_both_kinds():
     for text in ('"status": "complete"', '"status": "partial"', '"source_type": "search"'):
         assert text in RESULT_FORMAT
-
-
-def test_find_json_values_skips_what_does_not_parse():
-    from ex4_research.findings import find_json_values
-
-    assert find_json_values('{not json} then {"a": [1, {"b": 2}]} and [3]') == [
-        {"a": [1, {"b": 2}]},
-        [3],
-    ]

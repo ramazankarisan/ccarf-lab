@@ -5,7 +5,7 @@ import pytest
 from mcp import Client
 from mcp.types import TextContent
 
-from ex4_research.server import (
+from ex3_research.server import (
     DOCS_DIR,
     WEB_DIR,
     build_server,
@@ -150,7 +150,7 @@ async def test_load_document_rejects_anything_outside_the_report_library(doc_id)
 
 def test_resolve_doc_rejects_a_symlink_that_leaves_the_library(tmp_path, monkeypatch):
     """Even a well-formed id must resolve to a file directly inside DOCS_DIR."""
-    from ex4_research import server
+    from ex3_research import server
 
     library = tmp_path / "docs"
     library.mkdir()
@@ -183,14 +183,14 @@ def test_build_server_rejects_an_unknown_tool():
         build_server(["fetch_url"])
 
 
-# --- injected failures (EX4_FAIL, see faults.py) ------------------------------
+# --- injected failures (EX3_FAIL, see faults.py) ------------------------------
 
 
 @pytest.fixture
 def failures(monkeypatch):
     """Install a failure plan for this test only."""
-    from ex4_research import server
-    from ex4_research.faults import parse_plan
+    from ex3_research import server
+    from ex3_research.faults import parse_plan
 
     def install(value: str) -> None:
         monkeypatch.setattr(server, "FAILURES", parse_plan(value))

@@ -4,15 +4,15 @@ from typing import Any
 import pytest
 from claude_agent_sdk import PostToolUseHookInput, PreToolUseHookInput
 
-from ex4_research.completeness import (
+from ex3_research.completeness import (
     FINDINGS_HEADER,
     FindingsLedger,
     make_completeness_hooks,
     response_text,
 )
-from ex4_research.findings import Finding, NoSources, valid_findings
-from ex4_research.timeline import SPAWN_TOOL, SYNTHESIZER
-from tests.test_ex4_findings import DOC_FINDING, NO_SOURCES, WEB_FINDING
+from ex3_research.findings import Finding, NoSources, parse_findings
+from ex3_research.timeline import SPAWN_TOOL, SYNTHESIZER
+from tests.test_ex3_findings import DOC_FINDING, NO_SOURCES, WEB_FINDING
 
 WEB = Finding.model_validate(WEB_FINDING)
 DOC = Finding.model_validate(DOC_FINDING)
@@ -82,7 +82,7 @@ def test_attach_to_appends_every_finding_after_the_coordinators_text():
     prompt = ledger.attach_to("Question: how big?\nProcess notes: the archive timed out.\n")
     assert prompt.startswith("Question: how big?\nProcess notes: the archive timed out.\n\n")
     assert FINDINGS_HEADER in prompt
-    assert valid_findings(prompt) == [WEB, DOC, empty]  # exactly, nothing retyped
+    assert parse_findings(prompt) == [WEB, DOC, empty]  # exactly, nothing retyped
 
 
 def test_attach_to_with_no_findings_says_so_in_json():
@@ -137,7 +137,7 @@ async def test_the_synthesizer_prompt_gets_every_finding_from_code():
     updated = specific["updatedInput"]
     assert updated["subagent_type"] == SYNTHESIZER
     assert updated["prompt"].startswith("Question: how big? Notes: none.\n\n")
-    assert valid_findings(updated["prompt"]) == [WEB, DOC]
+    assert parse_findings(updated["prompt"]) == [WEB, DOC]
     assert updated["run_in_background"] is False
     assert ledger.attached == [2]
 
@@ -147,7 +147,7 @@ async def test_findings_the_coordinator_dropped_or_edited_are_still_attached():
     ledger = FindingsLedger(received=[WEB, DOC])
     edited = DOC.model_copy(update={"claim": "About EUR 2 billion."})
     output = await attach(ledger, pre_spawn(SYNTHESIZER, f"Findings: {as_json(edited)}"))
-    attached = valid_findings(output["hookSpecificOutput"]["updatedInput"]["prompt"])
+    attached = parse_findings(output["hookSpecificOutput"]["updatedInput"]["prompt"])
     assert WEB in attached
     assert DOC in attached
 

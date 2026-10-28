@@ -1,6 +1,6 @@
 import pytest
 
-from ex4_research.faults import FailurePlan, SearchTimeout, parse_plan, plan_from_env
+from ex3_research.faults import FailurePlan, SearchTimeout, parse_plan, plan_from_env
 
 
 @pytest.mark.parametrize("value", [None, ""])
@@ -35,13 +35,13 @@ def test_empty_once_empties_only_the_first_call():
 
 @pytest.mark.parametrize(
     ("value", "error"),
-    [("timeout_twice", "Unknown EX4_FAIL case"), ("category_timeout", "needs a category")],
+    [("timeout_twice", "Unknown EX3_FAIL case"), ("category_timeout", "needs a category")],
 )
 def test_parse_plan_rejects_typos(value, error):
     with pytest.raises(ValueError, match=error):
         parse_plan(value)
 
 
-def test_plan_from_env_reads_ex4_fail():
-    assert plan_from_env({"EX4_FAIL": "empty_once"}).case == "empty_once"
+def test_plan_from_env_reads_ex3_fail():
+    assert plan_from_env({"EX3_FAIL": "empty_once"}).case == "empty_once"
     assert plan_from_env({}).case is None

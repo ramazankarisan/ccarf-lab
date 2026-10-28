@@ -1,11 +1,11 @@
-"""Failure injection for web_search, driven by the EX4_FAIL environment variable.
+"""Failure injection for web_search, driven by the EX3_FAIL environment variable.
 
 The agent starts the MCP server as a subprocess, so a test or the CLI sets
-EX4_FAIL in that process's environment (as Exercise 1 does with SUPPORT_FAIL_NEXT).
+EX3_FAIL in that process's environment (as Exercise 1 does with SUPPORT_FAIL_NEXT).
 
-    EX4_FAIL=timeout_once                  the first call times out; the same query again works
-    EX4_FAIL=category_timeout:news archive every search of that category times out
-    EX4_FAIL=empty_once                    the first call returns a valid empty result
+    EX3_FAIL=timeout_once                  the first call times out; the same query again works
+    EX3_FAIL=category_timeout:news archive every search of that category times out
+    EX3_FAIL=empty_once                    the first call returns a valid empty result
 
 State is per server process. Each subagent gets its own process, so "first call"
 means the first call of each subagent.
@@ -14,7 +14,7 @@ means the first call of each subagent.
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-FAIL_ENV = "EX4_FAIL"
+FAIL_ENV = "EX3_FAIL"
 CASES = ("timeout_once", "category_timeout", "empty_once")
 
 
@@ -41,7 +41,7 @@ class FailurePlan:
 
 
 def parse_plan(value: str | None) -> FailurePlan:
-    """FailurePlan from EX4_FAIL; empty or unset means no failures.
+    """FailurePlan from EX3_FAIL; empty or unset means no failures.
 
     Raises ValueError for an unknown case, so a typo cannot silently test nothing.
     """

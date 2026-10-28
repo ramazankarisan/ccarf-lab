@@ -1,6 +1,6 @@
 """MCP server exposing the fake research corpus as two tools.
 
-Run over stdio:  uv run python -m ex4_research.server [TOOL ...]
+Run over stdio:  uv run python -m ex3_research.server [TOOL ...]
 
 With tool names, the server registers only those tools, so each subagent can
 get a server that has its own tool and nothing else. Without, it has both.
@@ -23,7 +23,7 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import Field
 
 from ex1_support_agent.server import tool_description
-from ex4_research.faults import FailurePlan, SearchTimeout, plan_from_env
+from ex3_research.faults import FailurePlan, SearchTimeout, plan_from_env
 
 CORPUS_DIR = Path(__file__).resolve().parent / "corpus"
 WEB_DIR = CORPUS_DIR / "web"

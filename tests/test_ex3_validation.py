@@ -5,14 +5,14 @@ from typing import Any
 import pytest
 from claude_agent_sdk import SubagentStopHookInput
 
-from ex4_research.validation import (
+from ex3_research.validation import (
     MAX_ERRORS,
     HandbackLog,
     correction_request,
     handback_errors,
     make_handback_validator,
 )
-from tests.test_ex4_findings import DOC_FINDING, NO_SOURCES, PARTIAL, WEB_FINDING
+from tests.test_ex3_findings import DOC_FINDING, NO_SOURCES, PARTIAL, WEB_FINDING
 
 EMPTY: dict[str, Any] = {"status": "complete", "findings": []}
 VALID_WEB = json.dumps({"status": "complete", "findings": [WEB_FINDING, NO_SOURCES]})
@@ -209,7 +209,7 @@ async def test_a_stop_without_a_last_message_is_blocked():
 # --- hand-backs captured from a live run ----------------------------------------
 
 CAPTURED = json.loads(
-    (Path(__file__).parent / "fixtures" / "ex4_broken_handbacks.json").read_text(encoding="utf-8")
+    (Path(__file__).parent / "fixtures" / "ex3_broken_handbacks.json").read_text(encoding="utf-8")
 )
 
 

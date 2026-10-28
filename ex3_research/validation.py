@@ -4,7 +4,7 @@ The hook runs on the SubagentStop event (named SubagentStop in claude-agent-sdk
 0.2.172, bundled CLI 2.1.308; its input carries agent_type, agent_id,
 last_assistant_message and stop_hook_active).
 
-Step 3's live runs showed researchers handing back results that code could not
+Live runs showed researchers handing back results that code could not
 read (a missing field, an empty excerpt, a finding without source_type), most
 often after a tool failure. The coordinator still read the text, but the
 completeness hook and the citation check silently lost those findings.
@@ -23,8 +23,8 @@ from dataclasses import dataclass, field
 from claude_agent_sdk import HookCallback, HookContext, HookInput, HookJSONOutput
 from pydantic import ValidationError
 
-from ex4_research.findings import RESULT, RESULT_START, Finding, findings_of
-from ex4_research.timeline import EXPECTED_SOURCE_TYPE
+from ex3_research.findings import RESULT, RESULT_START, Finding, findings_of
+from ex3_research.timeline import EXPECTED_SOURCE_TYPE
 
 logger = logging.getLogger(__name__)
 
